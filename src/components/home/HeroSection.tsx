@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { db } from '../../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import logo2 from '../layout/logo_solo.png'; // Assicurati di aver importato il logo
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 
 export function HeroSection() {
@@ -47,19 +46,20 @@ export function HeroSection() {
       </div>
 
       <div className="relative z-20 container mx-auto px-4 pt-16 pb-20">
-        <div className="max-w-3xl mx-auto text-center">
-          <img
-            className="block mx-auto h-48 sm:h-64 md:h-80 lg:h-96 w-auto mb-10" // Aumenta l'altezza del logo
-            src={logo2}
-            alt="U-WIN Network"
-          />
-          <h1 className="text-6xl font-bold mb-15 mb-4 bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-amber-600">
-            Money Generator System
-          </h1>
-          <p className="text-xl mb-8 text-gray-300">
-            Unisciti alla rivoluzione della finanza decentralizzata con U-WIN Network. 
-            Un sistema innovativo che combina blockchain, DeFi e meritocrazia.
-          </p>
+  <div className="max-w-3xl mx-auto text-center">
+    <img
+      className="block mx-auto h-48 sm:h-64 md:h-80 lg:h-96 w-auto mb-10"
+      src={logo2}
+      alt="U-WIN Network"
+    />
+    <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-15 mb-4 bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-amber-600">
+      Money Generator System
+    </h1>
+    <p className="text-lg sm:text-xl md:text-md mb-8 text-gray-300">
+      Unisciti alla rivoluzione della finanza decentralizzata con U-WIN Network. 
+      Un sistema innovativo che combina blockchain, DeFi e meritocrazia.
+    </p>
+
 
           {/* Avvolgi il bottone in un div flex centrato */}
           <div className="flex justify-center">
@@ -67,7 +67,7 @@ export function HeroSection() {
               size="lg"
               onClick={handleScrollToLeadForm}
               className="flex items-center justify-center bg-gradient-to-r from-yellow-400 to-amber-600 hover:from-yellow-500 hover:to-amber-700 text-black px-6 py-3">
-              <span className="text-lg font-bold">Inizia Ora</span>
+              <span className="text-lg">Inizia Ora</span>
               <ArrowRight className="ml-2 w-6 h-6" />
             </Button>
           </div>

@@ -67,7 +67,7 @@ export const Navbar = () => {
             ) : (
               <Link
                 to="/login"
-                className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90"
+                className="bg-primary text-white px-4 py-2 rounded-md"
               >
                 Accedi
               </Link>
@@ -135,7 +135,7 @@ export const Navbar = () => {
             ) : (
               <Link
                 to="/login"
-                className="block bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90"
+                className="block bg-primary text-white px-3 py-1 rounded-md "
                 onClick={() => setIsMenuOpen(false)}
               >
                 Accedi

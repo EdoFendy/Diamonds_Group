@@ -82,7 +82,7 @@ export function Login() {
 
       {/* Contenuto Principale */}
       <div className="relative z-20 flex items-center justify-center min-h-screen">
-        <div className="bg-black/50 p-8 rounded-lg border border-yellow-600/20 shadow-lg backdrop-blur-sm w-full max-w-md transition-transform duration-300 hover:scale-105">
+        <div className="bg-black/50 p-8 rounded-lg border border-yellow-600/20 shadow-lg  w-full max-w-md">
           <div className="text-center mb-8">
             <div className="bg-yellow-400/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <Lock className="w-8 h-8 text-yellow-600" />
