@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { LogOut, Menu } from 'lucide-react';
 import { auth } from '../../lib/firebase';
-import logo from './logo.png'; // Assicurati di aver importato il logo
+import logo from './logo.png';
 
 export const Navbar = () => {
   const { user } = useAuthStore();
@@ -16,11 +16,11 @@ export const Navbar = () => {
   return (
     <nav className="bg-black shadow-md">
       <div className="max-w-7xl mx-auto px-4">
-        <div className="flex justify-between h-20"> {/* Aumenta l'altezza della navbar */}
+        <div className="flex justify-between h-20">
           <div className="flex items-center">
             <Link to="/" className="flex-shrink-0">
               <img
-                className="h-10 w-auto" // Aumenta l'altezza del logo
+                className="h-10 w-auto"
                 src={logo}
                 alt="U-WIN Network"
               />
@@ -34,14 +34,21 @@ export const Navbar = () => {
             </Link>
 
             <Link
-                  to="/presentazioni"
-                  className="text-white hover:text-primary px-3 py-2"
-                >
-                  Presentazioni
-                </Link>
+              to="/presentazioni"
+              className="text-white hover:text-primary px-3 py-2"
+            >
+              Presentazioni
+            </Link>
+
+            <Link
+              to="/calendario"
+              className="text-white hover:text-primary px-3 py-2"
+            >
+              Calendario
+            </Link>
+
             {user ? (
               <>
-
                 <Link
                   to="/formazione"
                   className="text-white hover:text-primary px-3 py-2"
@@ -74,7 +81,7 @@ export const Navbar = () => {
             )}
           </div>
 
-          {/* Menu Mobile */}
+          {/* Bottone per menu Mobile */}
           <div className="md:hidden flex items-center">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -96,16 +103,24 @@ export const Navbar = () => {
               onClick={() => setIsMenuOpen(false)}
             >
               Home
-
-              
             </Link>
 
             <Link
-                  to="/presentazioni"
-                  className="text-white hover:text-primary px-3 py-2"
-                >
-                  Presentazioni
-                </Link>
+              to="/presentazioni"
+              className="block text-white hover:text-primary px-3 py-2"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Presentazioni
+            </Link>
+
+            <Link
+              to="/calendario"
+              className="block text-white hover:text-primary px-3 py-2"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Calendario
+            </Link>
+
             {user ? (
               <>
                 <Link
@@ -121,12 +136,15 @@ export const Navbar = () => {
                     className="block text-white hover:text-primary px-3 py-2"
                     onClick={() => setIsMenuOpen(false)}
                   >
-                  Admin
+                    Admin
                   </Link>
                 )}
                 <button
-                  onClick={handleLogout}
-                  className="flex items-center w-full text-white hover:text-primary px-3 py-2"
+                  onClick={() => {
+                    handleLogout();
+                    setIsMenuOpen(false);
+                  }}
+                  className="flex items-center w-full text-white hover:text-primary px-3 py-2 block"
                 >
                   <LogOut className="w-4 h-4 mr-2" />
                   Esci
@@ -135,7 +153,7 @@ export const Navbar = () => {
             ) : (
               <Link
                 to="/login"
-                className="block bg-primary text-white px-3 py-1 rounded-md "
+                className="block bg-primary text-white px-3 py-1 rounded-md"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Accedi

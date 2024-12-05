@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuthStore } from '../store/authStore';
 import { Play, Book, ChevronRight } from 'lucide-react';
-import type { Corso, Sezione } from '../types';
+import type { Corso, Sezione, Ruolo } from '../types';
 import { db } from '../lib/firebase';
 import {
   collection,
@@ -32,6 +32,8 @@ export function Formazione() {
   // Stato per i nuovi corsi/sezioni
   const [titoloNuovoCorso, setTitoloNuovoCorso] = React.useState<string>('');
   const [descrizioneNuovoCorso, setDescrizioneNuovoCorso] = React.useState<string>('');
+  const [ruoliPermessi, setRuoliPermessi] = React.useState<Ruolo[]>([]); // Aggiunto
+
   const [titoloNuovaSezione, setTitoloNuovaSezione] = React.useState<string>('');
   const [descrizioneNuovaSezione, setDescrizioneNuovaSezione] = React.useState<string>('');
   const [videoUrlNuovaSezione, setVideoUrlNuovaSezione] = React.useState<string>('');
@@ -48,6 +50,7 @@ export function Formazione() {
         id: doc.id,
         createdAt: (doc.data() as Corso).createdAt?.toDate(),
         sezioniCount: 0,
+        ruoliPermessi: (doc.data() as Corso).ruoliPermessi || [], // Aggiunto
       }));
       setCorsi(corsiData);
 
@@ -75,6 +78,11 @@ export function Formazione() {
   }, []);
 
   const handleSelectCorso = (corso: Corso) => {
+    if (!corso.ruoliPermessi.includes(user?.ruolo || '')) {
+      alert('Non hai i permessi per accedere a questo corso.');
+      return;
+    }
+
     // Disiscrive il listener precedente se esiste
     if (unsubscribeSezioniRef.current[corso.id]) {
       unsubscribeSezioniRef.current[corso.id]();
@@ -123,10 +131,13 @@ export function Formazione() {
         descrizione: descrizioneNuovoCorso,
         createdAt: new Date(),
         sezioniCount: 0,
+        ruoliPermessi, // Aggiunto
       };
       await addDoc(collection(db, 'corsi'), nuovoCorso);
+      // Resetta gli stati
       setTitoloNuovoCorso('');
       setDescrizioneNuovoCorso('');
+      setRuoliPermessi([]);
       console.log("Nuovo corso aggiunto:", nuovoCorso);
     } catch (error) {
       console.error("Errore nell'aggiungere il corso:", error);
@@ -187,27 +198,29 @@ export function Formazione() {
               </div>
 
               <div className="space-y-4">
-                {corsi.map((corso) => (
-                  <button
-                    key={corso.id}
-                    onClick={() => handleSelectCorso(corso)}
-                    className={`w-full text-left p-4 rounded-lg border ${
-                      corsoSelezionato?.id === corso.id
-                        ? 'bg-yellow-400/20 border-yellow-600'
-                        : 'bg-gray-800 hover:bg-gray-700'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-medium text-white">{corso.titolo}</h3>
-                        <p className="text-sm text-gray-300">
-                          {corso.sezioniCount !== undefined ? corso.sezioniCount : 0} sezioni
-                        </p>
+                {corsi
+                  .filter((corso) => corso.ruoliPermessi.includes(user?.ruolo || ''))
+                  .map((corso) => (
+                    <button
+                      key={corso.id}
+                      onClick={() => handleSelectCorso(corso)}
+                      className={`w-full text-left p-4 rounded-lg border ${
+                        corsoSelezionato?.id === corso.id
+                          ? 'bg-yellow-400/20 border-yellow-600'
+                          : 'bg-gray-800 hover:bg-gray-700'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h3 className="font-medium text-white">{corso.titolo}</h3>
+                          <p className="text-sm text-gray-300">
+                            {corso.sezioniCount !== undefined ? corso.sezioniCount : 0} video
+                          </p>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-gray-400" />
                       </div>
-                      <ChevronRight className="w-5 h-5 text-gray-400" />
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  ))}
               </div>
 
               {user?.ruolo === 'admin' && (
@@ -228,6 +241,27 @@ export function Formazione() {
                     placeholder="Descrizione del corso"
                     className="w-full mb-2 p-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
                   />
+                  <div className="mb-4">
+                    <h4 className="text-md font-semibold mb-2">Seleziona i ruoli permessi:</h4>
+                    {['Base', 'Avanzato', 'admin', 'utente'].map((ruolo) => (
+                      <label key={ruolo} className="inline-flex items-center mr-4">
+                        <input
+                          type="checkbox"
+                          value={ruolo}
+                          checked={ruoliPermessi.includes(ruolo as Ruolo)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setRuoliPermessi([...ruoliPermessi, ruolo as Ruolo]);
+                            } else {
+                              setRuoliPermessi(ruoliPermessi.filter((r) => r !== ruolo));
+                            }
+                          }}
+                          className="form-checkbox h-4 w-4 text-yellow-500"
+                        />
+                        <span className="ml-2 text-white">{ruolo}</span>
+                      </label>
+                    ))}
+                  </div>
                   <button
                     onClick={handleAddCorso}
                     className="w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors"

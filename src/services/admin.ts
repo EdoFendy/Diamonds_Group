@@ -1,5 +1,6 @@
-import { auth, db } from '../lib/firebase';
-import { createUserWithEmailAndPassword, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { auth, db, firebaseConfig } from '../lib/firebase';
+import { initializeApp, FirebaseApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { User, Ruolo } from '../types';
 
@@ -9,23 +10,21 @@ export async function createNewUser(userData: {
   referral: string;
   ruolo: Ruolo;
 }): Promise<User> {
+  let secondaryApp: FirebaseApp | null = null;
   try {
-    // Assicurati che la persistenza sia attiva
-    await setPersistence(auth, browserSessionPersistence);
-
     const currentUser = auth.currentUser;
     if (!currentUser) {
       throw new Error('Utente non autenticato. Assicurati che l\'utente sia loggato correttamente.');
     }
-    
+
     console.log('Utente corrente autenticato:', currentUser);
 
     const adminDocRef = doc(db, 'users', currentUser.uid);
     const adminDoc = await getDoc(adminDocRef);
-    
+
     console.log('Verifica ruolo admin:', adminDoc.data()?.ruolo);
 
-    if (!adminDoc.exists() || adminDoc.data().ruolo !== 'admin') {
+    if (!adminDoc.exists() || adminDoc.data()?.ruolo !== 'admin') {
       throw new Error('Permesso negato. Solo gli amministratori possono creare nuovi utenti.');
     }
 
@@ -35,9 +34,15 @@ export async function createNewUser(userData: {
 
     console.log('Creazione dell\'utente Firebase con:', tempEmail, tempPassword);
 
-    // Creazione dell'utente in Firebase Authentication
+    // Inizializza una seconda istanza dell'app Firebase
+    secondaryApp = initializeApp(firebaseConfig, 'Secondary');
+
+    // Ottieni l'oggetto auth dalla seconda istanza
+    const secondaryAuth = getAuth(secondaryApp);
+
+    // Creazione dell'utente in Firebase Authentication usando la seconda istanza
     const userCredential = await createUserWithEmailAndPassword(
-      auth,
+      secondaryAuth,
       tempEmail,
       tempPassword
     );
@@ -71,6 +76,11 @@ export async function createNewUser(userData: {
   } catch (error) {
     console.error('Errore durante la creazione del nuovo utente:', error);
     throw error;
+  } finally {
+    // Elimina la seconda istanza per liberare le risorse
+    if (secondaryApp) {
+      await deleteApp(secondaryApp);
+    }
   }
 }
 

@@ -113,9 +113,13 @@ export function LeadForm() {
       {/* Contenuto della LeadForm */}
       <div className="relative z-20 container mx-auto px-4">
         <Card className="max-w-md mx-auto bg-black/20 border-yellow-600/50 backdrop-blur-sm p-8">
-        <h2 className="text-4xl font-bold text-center mb-8">
+        <h2 className="text-4xl font-bold text-center mb-3">
           <GradientText>Scopri di più</GradientText>
         </h2>
+        <h3 className="text-l text-center">
+          Verrai presto contattato da noi!
+
+        </h3>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* Campo Nome */}
             <FormField label="Nome" error={errors.nome?.message}>
