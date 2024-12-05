@@ -190,7 +190,8 @@ export function Calendario() {
       </div>
 
       {/* Contenuto Principale */}
-      <div className="relative z-10 mx-auto p-4 min-h-screen text-white px-40 pt-10">
+      {/* Notare che ora il padding orizzontale è applicato solo da md in su: md:px-40 */}
+      <div className="relative z-10 mx-auto p-4 min-h-screen text-white pt-10 md:px-40">
         <div className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-bold mb-2">
             <GradientText>Calendario Zoom</GradientText>
@@ -214,8 +215,8 @@ export function Calendario() {
           </div>
         )}
 
-        {/* Wrapper con padding orizzontale per aggiungere spazio sui lati */}
-        <div className="px-1">
+        {/* Qui il padding orizzontale extra viene applicato solo a partire da md: md:px-4 */}
+        <div className="md:px-4">
           <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
             {daysOfWeek.map((day) => {
               const dayMeetings = zoomMeetings
