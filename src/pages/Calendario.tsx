@@ -190,7 +190,7 @@ export function Calendario() {
       </div>
 
       {/* Contenuto Principale */}
-      <div className="relative z-10 mx-auto p-4 min-h-screen text-white">
+      <div className="relative z-10 mx-auto p-4 min-h-screen text-white px-40 pt-10">
         <div className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-bold mb-2">
             <GradientText>Calendario Zoom</GradientText>
@@ -214,66 +214,69 @@ export function Calendario() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-          {daysOfWeek.map((day) => {
-            const dayMeetings = zoomMeetings
-              .filter((m) => isSameDay(m.data, day))
-              .sort((a, b) => a.data.getTime() - b.data.getTime());
+        {/* Wrapper con padding orizzontale per aggiungere spazio sui lati */}
+        <div className="px-1">
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+            {daysOfWeek.map((day) => {
+              const dayMeetings = zoomMeetings
+                .filter((m) => isSameDay(m.data, day))
+                .sort((a, b) => a.data.getTime() - b.data.getTime());
 
-            return (
-              <div key={day.toISOString()} className="bg-black/50 p-2 rounded-lg border border-yellow-600/20 shadow-sm backdrop-blur-sm">
-                <h2 className="text-xl font-semibold mb-2">
-                  {getDayName(day)}
-                </h2>
-                <p className="text-sm text-gray-300 mb-4">
-                  {formatDate(day)}
-                </p>
-                <div className="space-y-2">
-                  {dayMeetings.map((m) => (
-                    <div key={m.id} className="p-2 bg-gray-800 rounded-lg">
-                      <h3 className="font-medium text-yellow-400">{m.titolo}</h3>
-                      <p className="text-sm text-gray-300">{m.descrizione}</p>
-                      <p className="text-sm text-gray-400">{formatTime(m.data)}</p>
-                      <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:underline">
-                        Link al meeting Zoom
-                      </a>
-                      {user && user.ruolo === 'admin' && (
-                        <div className="flex space-x-2 mt-2">
-                          <button
-                            onClick={() => openEditModal(m)}
-                            className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500"
-                          >
-                            Modifica
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMeeting(m.id)}
-                            className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700"
-                          >
-                            Elimina
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {dayMeetings.length === 0 && (
-                    <p className="text-sm text-gray-500">Nessun meeting programmato.</p>
+              return (
+                <div key={day.toISOString()} className="bg-black/50 p-2 rounded-lg border border-yellow-600/20 shadow-sm backdrop-blur-sm">
+                  <h2 className="text-xl font-semibold mb-2">
+                    {getDayName(day)}
+                  </h2>
+                  <p className="text-sm text-gray-300 mb-4">
+                    {formatDate(day)}
+                  </p>
+                  <div className="space-y-2">
+                    {dayMeetings.map((m) => (
+                      <div key={m.id} className="p-2 bg-gray-800 rounded-lg">
+                        <h3 className="font-medium text-yellow-400">{m.titolo}</h3>
+                        <p className="text-sm text-gray-300">{m.descrizione}</p>
+                        <p className="text-sm text-gray-400">{formatTime(m.data)}</p>
+                        <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:underline">
+                          Link al meeting Zoom
+                        </a>
+                        {user && user.ruolo === 'admin' && (
+                          <div className="flex space-x-2 mt-2">
+                            <button
+                              onClick={() => openEditModal(m)}
+                              className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500"
+                            >
+                              Modifica
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMeeting(m.id)}
+                              className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700"
+                            >
+                              Elimina
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {dayMeetings.length === 0 && (
+                      <p className="text-sm text-gray-500">Nessun meeting programmato.</p>
+                    )}
+                  </div>
+                  {user && user.ruolo === 'admin' && (
+                    <button
+                      onClick={() => {
+                        resetModalState();
+                        setShowModal(true);
+                      }}
+                      className="mt-4 flex items-center justify-center w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors"
+                    >
+                      <PlusCircle className="w-5 h-5 mr-2" />
+                      Aggiungi Meeting Zoom
+                    </button>
                   )}
                 </div>
-                {user && user.ruolo === 'admin' && (
-                  <button
-                    onClick={() => {
-                      resetModalState();
-                      setShowModal(true);
-                    }}
-                    className="mt-4 flex items-center justify-center w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors"
-                  >
-                    <PlusCircle className="w-5 h-5 mr-2" />
-                    Aggiungi Meeting Zoom
-                  </button>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 
