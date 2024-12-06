@@ -7,7 +7,9 @@ import { User, Ruolo } from '../types';
 export async function createNewUser(userData: {
   nome: string;
   cognome: string;
-  referral: string;
+  // Rimuovi la linea sotto se "referral" non serve più
+  referral?: string;
+  sponsor: string; // Nuovo campo sponsor
   ruolo: Ruolo;
 }): Promise<User> {
   let secondaryApp: FirebaseApp | null = null;
@@ -34,10 +36,8 @@ export async function createNewUser(userData: {
 
     console.log('Creazione dell\'utente Firebase con:', tempEmail, tempPassword);
 
-    // Inizializza una seconda istanza dell'app Firebase
+    // Inizializza una seconda istanza dell'app Firebase per non disconnettere l'admin
     secondaryApp = initializeApp(firebaseConfig, 'Secondary');
-
-    // Ottieni l'oggetto auth dalla seconda istanza
     const secondaryAuth = getAuth(secondaryApp);
 
     // Creazione dell'utente in Firebase Authentication usando la seconda istanza
@@ -56,7 +56,9 @@ export async function createNewUser(userData: {
       cognome: userData.cognome,
       email: tempEmail,
       codiceUnivoco,
-      referral: userData.referral,
+      // Se `referral` non serve più, rimuovi questa linea:
+      referral: userData.referral || '',
+      sponsor: userData.sponsor, // Assegna il campo sponsor
       ruolo: userData.ruolo,
       dataRegistrazione: new Date(),
     };

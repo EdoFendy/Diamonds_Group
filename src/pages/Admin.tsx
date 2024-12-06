@@ -1,33 +1,17 @@
 "use client";
 
 import React from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { createNewUser } from '../services/admin';
-import { useToast } from '../hooks/useToast';
-import { UserPlus, Users, ChevronRight, Lock } from 'lucide-react';
-import { User, Ruolo } from '../types';
-import { getFirestore, collection, getDocs, Timestamp } from 'firebase/firestore';
+import { useAuthStore } from '../store/authStore';
+import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { app } from '../lib/firebase';
-import { GradientText } from '../components/layout/GradientText'; // Assicurati che il percorso sia corretto
+import { GradientText } from '../components/layout/GradientText';
+import { User, Ruolo } from '../types';
+import { UserPlus, Pencil, Trash2 } from 'lucide-react';
 
 const db = getFirestore(app);
 
-// Definizione dei ruoli disponibili
 const ruoliDisponibili: Ruolo[] = ["Base", "Avanzato", "admin", "utente"];
 
-// Schema di validazione per la creazione di un nuovo utente
-const userSchema = z.object({
-  nome: z.string().min(2, 'Nome troppo corto'),
-  cognome: z.string().min(2, 'Cognome troppo corto'),
-  referral: z.string().min(2, 'Referral obbligatorio'), // Rimuovi questa riga se non vuoi più "referral"
-  ruolo: z.enum(ruoliDisponibili, { required_error: 'Ruolo obbligatorio' }),
-});
-
-type UserFormData = z.infer<typeof userSchema>;
-
-// Tipo Lead aggiornato
 type Lead = {
   id: string;
   nome: string;
@@ -35,134 +19,218 @@ type Lead = {
   email: string;
   telefono: string;
   createdAt: Timestamp;
+  contattato: boolean;
+  sponsor: string; // Aggiungiamo sponsor anche nei leads
 };
 
 export function Admin() {
-  const { addToast } = useToast();
+  const { user } = useAuthStore();
   const [users, setUsers] = React.useState<User[]>([]);
-  const [filteredUsers, setFilteredUsers] = React.useState<User[]>([]);
   const [leads, setLeads] = React.useState<Lead[]>([]);
-  const [filteredLeads, setFilteredLeads] = React.useState<Lead[]>([]);
-  const [searchTermUsers, setSearchTermUsers] = React.useState('');
-  const [searchTermLeads, setSearchTermLeads] = React.useState('');
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<UserFormData>({
-    resolver: zodResolver(userSchema),
-  });
+  // Stati per nuovo utente
+  const [nome, setNome] = React.useState('');
+  const [cognome, setCognome] = React.useState('');
+  const [sponsor, setSponsor] = React.useState('');
+  const [ruolo, setRuolo] = React.useState<Ruolo>('utente');
 
-  const onSubmit = async (data: UserFormData) => {
-    console.debug('Invio del form con i dati:', data);
-    try {
-      const newUser = await createNewUser({
-        ...data,
-        dataRegistrazione: new Date(),
+  // Stati per modifica utente
+  const [editingUserId, setEditingUserId] = React.useState<string | null>(null);
+  const [editNome, setEditNome] = React.useState('');
+  const [editCognome, setEditCognome] = React.useState('');
+  const [editSponsor, setEditSponsor] = React.useState('');
+  const [editRuolo, setEditRuolo] = React.useState<Ruolo>('utente');
+
+  // Filtri per leads (nessun form di creazione leads)
+  const [searchNameLead, setSearchNameLead] = React.useState('');
+  const [searchSponsorLead, setSearchSponsorLead] = React.useState('');
+  const [startDateLead, setStartDateLead] = React.useState('');
+  const [endDateLead, setEndDateLead] = React.useState('');
+
+  // Stati per modifica lead
+  const [editingLeadId, setEditingLeadId] = React.useState<string | null>(null);
+  const [editLeadNome, setEditLeadNome] = React.useState('');
+  const [editLeadCognome, setEditLeadCognome] = React.useState('');
+  const [editLeadEmail, setEditLeadEmail] = React.useState('');
+  const [editLeadTelefono, setEditLeadTelefono] = React.useState('');
+
+  React.useEffect(() => {
+    const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const usersData: User[] = snapshot.docs.map((doc) => ({
+        ...(doc.data() as Omit<User, 'id'>),
+        id: doc.id,
+      }));
+      setUsers(usersData);
+    });
+
+    const unsubscribeLeads = onSnapshot(collection(db, 'leads'), (snapshot) => {
+      const leadsData: Lead[] = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          nome: data.nome,
+          cognome: data.cognome,
+          email: data.email,
+          telefono: data.telefono,
+          createdAt: data.createdAt,
+          contattato: data.contattato || false,
+          sponsor: data.sponsor || '',
+        } as Lead;
       });
-      console.debug('Nuovo utente creato:', newUser);
-      addToast(`Utente creato con successo. Codice: ${newUser.codiceUnivoco}`, 'success');
-      setUsers((prev) => [...prev, newUser]);
-      reset();
-    } catch (error: any) { // Aggiunto tipo any per l'errore
-      console.error('Errore durante la creazione dell\'utente:', error);
-      addToast('Errore durante la creazione dell\'utente: ' + (error.message || error), 'error');
+      setLeads(leadsData);
+    });
+
+    return () => {
+      unsubscribeUsers();
+      unsubscribeLeads();
+    };
+  }, []);
+
+  // Aggiungi un nuovo utente
+  const handleAddUser = async () => {
+    try {
+      const newUser = {
+        nome,
+        cognome,
+        sponsor,
+        ruolo,
+        dataRegistrazione: new Date(),
+        codiceUnivoco: Math.random().toString(36).substring(2,10).toUpperCase()
+      };
+      await addDoc(collection(db, 'users'), newUser);
+      setNome(''); setCognome(''); setSponsor(''); setRuolo('utente');
+    } catch (error) {
+      console.error('Errore nella creazione utente:', error);
     }
   };
 
-  React.useEffect(() => {
-    const fetchLeads = async () => {
-      console.debug('Inizio fetch dei leads');
-      try {
-        const leadsCollection = collection(db, 'leads');
-        const leadSnapshot = await getDocs(leadsCollection);
-        const leadsList = leadSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            nome: data.nome,
-            cognome: data.cognome,
-            email: data.email,
-            telefono: data.telefono,
-            createdAt: data.createdAt,
-          } as Lead;
-        });
-        console.debug('Leads recuperati:', leadsList);
-        setLeads(leadsList);
-        setFilteredLeads(leadsList);
-      } catch (error) {
-        console.error('Errore durante il recupero dei leads:', error);
-        addToast('Errore durante il recupero dei leads', 'error');
-      }
-    };
-
-    const fetchUsers = async () => {
-      console.debug('Inizio fetch degli utenti');
-      try {
-        const usersCollection = collection(db, 'users');
-        const userSnapshot = await getDocs(usersCollection);
-        const usersList = userSnapshot.docs.map(doc => {
-          const data = doc.data() as User;
-          return {
-            ...data,
-            id: doc.id,
-          };
-        });
-        console.debug('Utenti recuperati:', usersList);
-        setUsers(usersList);
-        setFilteredUsers(usersList);
-      } catch (error) {
-        console.error('Errore durante il recupero degli utenti:', error);
-        addToast('Errore durante il recupero degli utenti', 'error');
-      }
-    };
-
-    fetchLeads();
-    fetchUsers();
-  }, [addToast]);
-
-  const handleUserSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value.toLowerCase();
-    console.debug('Termine di ricerca utenti:', value);
-    setSearchTermUsers(value);
-    setFilteredUsers(users.filter(user =>
-      user.nome.toLowerCase().includes(value) ||
-      user.cognome.toLowerCase().includes(value) ||
-      user.referral.toLowerCase().includes(value) || // Rimuovi questa parte se "referral" non è più usato
-      user.codiceUnivoco.toLowerCase().includes(value)
-    ));
+  const handleUpdateUser = async () => {
+    if (!editingUserId) return;
+    try {
+      const userRef = doc(db, 'users', editingUserId);
+      await updateDoc(userRef, {
+        nome: editNome,
+        cognome: editCognome,
+        sponsor: editSponsor,
+        ruolo: editRuolo,
+      });
+      setEditingUserId(null);
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento utente:', error);
+    }
   };
 
-  const handleLeadSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value.toLowerCase();
-    console.debug('Termine di ricerca leads:', value);
-    setSearchTermLeads(value);
-    setFilteredLeads(leads.filter(lead =>
-      lead.nome.toLowerCase().includes(value) ||
-      lead.cognome.toLowerCase().includes(value) ||
-      lead.email.toLowerCase().includes(value) ||
-      lead.telefono.includes(value)
-    ));
+  const handleDeleteUser = async (id: string) => {
+    try {
+      const userRef = doc(db, 'users', id);
+      await deleteDoc(userRef);
+    } catch (error) {
+      console.error('Errore nell\'eliminazione utente:', error);
+    }
   };
+
+  const handleEditUser = (u: User) => {
+    setEditingUserId(u.id);
+    setEditNome(u.nome);
+    setEditCognome(u.cognome);
+    setEditSponsor(u.sponsor || '');
+    setEditRuolo(u.ruolo);
+  };
+
+  // Modifica/Salvataggio Lead
+  const handleEditLead = (l: Lead) => {
+    setEditingLeadId(l.id);
+    setEditLeadNome(l.nome);
+    setEditLeadCognome(l.cognome);
+    setEditLeadEmail(l.email);
+    setEditLeadTelefono(l.telefono);
+  };
+
+  const handleUpdateLead = async () => {
+    if (!editingLeadId) return;
+    try {
+      const leadRef = doc(db, 'leads', editingLeadId);
+      await updateDoc(leadRef, {
+        nome: editLeadNome,
+        cognome: editLeadCognome,
+        email: editLeadEmail,
+        telefono: editLeadTelefono,
+      });
+      setEditingLeadId(null);
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento lead:', error);
+    }
+  };
+
+  const handleDeleteLead = async (id: string) => {
+    try {
+      const leadRef = doc(db, 'leads', id);
+      await deleteDoc(leadRef);
+    } catch (error) {
+      console.error('Errore nell\'eliminazione lead:', error);
+    }
+  };
+
+  const handleToggleLeadContacted = async (lead: Lead) => {
+    try {
+      const leadRef = doc(db, 'leads', lead.id);
+      await updateDoc(leadRef, {
+        contattato: !lead.contattato
+      });
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento contatto lead:', error);
+    }
+  };
+
+  // Filtraggio leads in base ai nuovi criteri: nome, sponsor, date
+  const filteredLeads = React.useMemo(() => {
+    return leads.filter((l) => {
+      // Nome filter
+      if (searchNameLead && !l.nome.toLowerCase().includes(searchNameLead.toLowerCase())) {
+        return false;
+      }
+
+      // Sponsor filter
+      if (searchSponsorLead && !l.sponsor.toLowerCase().includes(searchSponsorLead.toLowerCase())) {
+        return false;
+      }
+
+      // Date filter (tra startDateLead e endDateLead se presenti)
+      if (startDateLead) {
+        const startDate = new Date(startDateLead);
+        if (l.createdAt.toDate() < startDate) {
+          return false;
+        }
+      }
+      if (endDateLead) {
+        const endDate = new Date(endDateLead);
+        // per filtrare fino a fine giornata endDate, possiamo aggiungere 1 giorno
+        endDate.setHours(23,59,59,999);
+        if (l.createdAt.toDate() > endDate) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [leads, searchNameLead, searchSponsorLead, startDateLead, endDateLead]);
 
   return (
     <section className="relative min-h-screen bg-black text-white">
-      {/* Background Gradient Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black via-black/50 to-black z-10" />
-
-      {/* Background Image and Gradient Overlay */}
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 z-0">
         <div
-          className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2070')] bg-cover bg-center opacity-20"
+          className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2070')] bg-cover bg-center opacity-40"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/20 to-amber-500/20 mix-blend-overlay" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black via-black/50 to-black" />
       </div>
 
-      {/* Contenuto Principale */}
-      <div className="relative z-20 max-w-6xl mx-auto p-4 min-h-screen">
+      <div className="relative z-10 max-w-7xl mx-auto p-4 min-h-screen text-white">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">
-            <GradientText>Pannello Amministratore</GradientText>
+            <GradientText>Admin</GradientText>
           </h1>
           <p className="text-gray-300">
-            Gestisci gli utenti e monitora i leads
+            Gestione semplice di utenti e leads, stile Formazione.
           </p>
         </div>
 
@@ -176,206 +244,322 @@ export function Admin() {
               </h2>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="space-y-4">
               <div>
-                <label
-                  htmlFor="nome"
-                  className="block text-sm font-medium text-yellow-600 mb-1"
-                >
-                  Nome
-                </label>
+                <label className="block text-sm font-medium text-yellow-600 mb-1">Nome</label>
                 <input
                   type="text"
-                  id="nome"
-                  {...register('nome')}
-                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
                   placeholder="Nome"
                 />
-                {errors.nome && (
-                  <p className="text-red-500 text-sm mt-1">{errors.nome.message}</p>
-                )}
               </div>
 
               <div>
-                <label
-                  htmlFor="cognome"
-                  className="block text-sm font-medium text-yellow-600 mb-1"
-                >
-                  Cognome
-                </label>
+                <label className="block text-sm font-medium text-yellow-600 mb-1">Cognome</label>
                 <input
                   type="text"
-                  id="cognome"
-                  {...register('cognome')}
-                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                  value={cognome}
+                  onChange={(e) => setCognome(e.target.value)}
+                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
                   placeholder="Cognome"
                 />
-                {errors.cognome && (
-                  <p className="text-red-500 text-sm mt-1">{errors.cognome.message}</p>
-                )}
               </div>
 
-              {/* Campo Selezione Ruolo */}
               <div>
-                <label
-                  htmlFor="ruolo"
-                  className="block text-sm font-medium text-yellow-600 mb-1"
-                >
-                  Ruolo
-                </label>
+                <label className="block text-sm font-medium text-yellow-600 mb-1">Ruolo</label>
                 <select
-                  id="ruolo"
-                  {...register('ruolo')}
-                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
-                  defaultValue=""
+                  value={ruolo}
+                  onChange={(e) => setRuolo(e.target.value as Ruolo)}
+                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
                 >
-                  <option value="" disabled>Seleziona un ruolo</option>
-                  {ruoliDisponibili.map((ruolo) => (
-                    <option key={ruolo} value={ruolo}>
-                      {ruolo}
-                    </option>
+                  {ruoliDisponibili.map((r) => (
+                    <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
-                {errors.ruolo && (
-                  <p className="text-red-500 text-sm mt-1">{errors.ruolo.message}</p>
-                )}
               </div>
 
-              {/* Se desideri rimuovere anche il campo Referral, commenta o elimina questa sezione */}
+              
               <div>
-                <label
-                  htmlFor="referral"
-                  className="block text-sm font-medium text-yellow-600 mb-1"
-                >
-                  Referral
-                </label>
+                <label className="block text-sm font-medium text-yellow-600 mb-1">Sponsor</label>
                 <input
                   type="text"
-                  id="referral"
-                  {...register('referral')}
-                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
-                  placeholder="Nome del referral"
+                  value={sponsor}
+                  onChange={(e) => setSponsor(e.target.value)}
+                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                  placeholder="Sponsor"
                 />
-                {errors.referral && (
-                  <p className="text-red-500 text-sm mt-1">{errors.referral.message}</p>
-                )}
               </div>
 
               <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors disabled:opacity-50"
+                onClick={handleAddUser}
+                className="w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors"
               >
-                {isSubmitting ? 'Creazione in corso...' : 'Crea Utente'}
+                Aggiungi Utente
               </button>
-            </form>
+            </div>
           </div>
 
-          {/* Lista Utenti con Filtri */}
+          {/* Lista Utenti */}
           <div className="bg-black/50 p-6 rounded-lg border border-yellow-600/20 shadow-sm backdrop-blur-sm">
-            <div className="flex items-center mb-6">
-              <Users className="w-6 h-6 text-yellow-600 mr-2" />
-              <h2 className="text-xl font-semibold">
-                <GradientText>Utenti Recenti</GradientText>
-              </h2>
-            </div>
+            <h2 className="text-xl font-semibold mb-4">
+              <GradientText>Utenti</GradientText>
+            </h2>
 
-            <input
-              type="text"
-              value={searchTermUsers}
-              onChange={handleUserSearch}
-              className="w-full mb-4 px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
-              placeholder="Cerca per nome, cognome, referral, codice univoco..."
-            />
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {users.map(u => (
+                <div key={u.id} className="p-4 border border-yellow-600 rounded-lg bg-gray-800">
+                  {editingUserId === u.id ? (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={editNome}
+                        onChange={(e) => setEditNome(e.target.value)}
+                        className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                      />
+                      <input
+                        type="text"
+                        value={editCognome}
+                        onChange={(e) => setEditCognome(e.target.value)}
+                        className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                      />
 
-            <div className="space-y-4">
-              {filteredUsers.map((user) => (
-                <div
-                  key={user.id}
-                  className="p-4 border border-yellow-600 rounded-lg bg-gray-800 transition-colors"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-medium text-white">
-                        {user.nome} {user.cognome}
-                      </h3>
-                      {/* Rimuovi questa sezione se "referral" non è più usato */}
-                      <p className="text-sm text-gray-300">
-                        Referral: {user.referral}
-                      </p>
-                      {/* Visualizzazione del ruolo */}
-                      <p className="text-sm text-gray-300">
-                        Ruolo: {user.ruolo}
-                      </p>
+                      <input
+                        type="text"
+                        value={editSponsor}
+                        onChange={(e) => setEditSponsor(e.target.value)}
+                        className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                      />
+                      <select
+                        value={editRuolo}
+                        onChange={(e) => setEditRuolo(e.target.value as Ruolo)}
+                        className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                      >
+                        {ruoliDisponibili.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      <div className="flex space-x-2 justify-end">
+                        <button
+                          onClick={() => setEditingUserId(null)}
+                          className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600"
+                        >
+                          Annulla
+                        </button>
+                        <button
+                          onClick={handleUpdateUser}
+                          className="bg-yellow-400 text-black px-2 py-1 rounded hover:bg-yellow-500"
+                        >
+                          Salva
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-mono bg-yellow-600 text-black px-2 py-1 rounded">
-                        {user.codiceUnivoco}
-                      </p>
+                  ) : (
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-medium text-white">{u.nome} {u.cognome}</h3>
+                        {u.sponsor && <p className="text-sm text-gray-300">Sponsor: {u.sponsor}</p>}
+                        <p className="text-sm text-gray-300">Ruolo: {u.ruolo}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-mono bg-yellow-600 text-black px-2 py-1 rounded">
+                          {u.codiceUnivoco}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {editingUserId !== u.id && (
+                    <div className="flex space-x-2 mt-2 justify-end">
+                      <button
+                        onClick={() => {
+                          setEditNome(u.nome);
+                          setEditCognome(u.cognome);
+                          setEditSponsor(u.sponsor || '');
+                          setEditRuolo(u.ruolo);
+                          setEditingUserId(u.id);
+                        }}
+                        className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500 flex items-center"
+                      >
+                        <Pencil className="w-4 h-4 mr-1"/> Modifica
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(u.id)}
+                        className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700 flex items-center"
+                      >
+                        <Trash2 className="w-4 h-4 mr-1"/> Elimina
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
 
-              {filteredUsers.length === 0 && (
+              {users.length === 0 && (
                 <p className="text-gray-300 text-center py-4">
-                  Nessun utente trovato
+                  Nessun utente presente
                 </p>
               )}
             </div>
           </div>
         </div>
 
-        {/* Lista Leads con Filtri */}
+        {/* Leads con Filtri per data, sponsor o nome (nessun form) */}
         <div className="bg-black/50 p-6 rounded-lg border border-yellow-600/20 shadow-sm backdrop-blur-sm mt-8">
-          <div className="flex items-center mb-6">
-            <Users className="w-6 h-6 text-yellow-600 mr-2" />
-            <h2 className="text-xl font-semibold">
-              <GradientText>Leads Raccolti</GradientText>
-            </h2>
+          <h2 className="text-xl font-semibold mb-4">
+            <GradientText>Leads</GradientText>
+          </h2>
+
+          <div className="grid md:grid-cols-3 gap-2 mb-4">
+            <input
+              type="text"
+              value={searchNameLead}
+              onChange={(e) => setSearchNameLead(e.target.value)}
+              className="px-3 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+              placeholder="Nome"
+            />
+            <input
+              type="text"
+              value={searchSponsorLead}
+              onChange={(e) => setSearchSponsorLead(e.target.value)}
+              className="px-3 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+              placeholder="Sponsor"
+            />
+            <div className="flex space-x-1">
+              <input
+                type="date"
+                value={startDateLead}
+                onChange={(e) => setStartDateLead(e.target.value)}
+                className="px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md w-1/2"
+              />
+              <input
+                type="date"
+                value={endDateLead}
+                onChange={(e) => setEndDateLead(e.target.value)}
+                className="px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md w-1/2"
+              />
+            </div>
           </div>
 
-          <input
-            type="text"
-            value={searchTermLeads}
-            onChange={handleLeadSearch}
-            className="w-full mb-4 px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
-            placeholder="Cerca per nome, cognome, email, telefono..."
-          />
+          {/* Filtraggio leads */}
+          {(() => {
+            const filteredLeads = leads.filter((l) => {
+              if (searchNameLead && !l.nome.toLowerCase().includes(searchNameLead.toLowerCase())) return false;
+              if (searchSponsorLead && !l.sponsor.toLowerCase().includes(searchSponsorLead.toLowerCase())) return false;
 
-          <div className="space-y-4">
-            {filteredLeads.map((lead) => (
-              <div
-                key={lead.id}
-                className="p-4 border border-yellow-600 rounded-lg bg-gray-800 transition-colors"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-medium text-white">
-                      {lead.nome} {lead.cognome}
-                    </h3>
-                    <p className="text-sm text-gray-300">
-                      Email: {lead.email}
-                    </p>
-                    <p className="text-sm text-gray-300">
-                      Telefono: {lead.telefono}
-                    </p>
+              if (startDateLead) {
+                const start = new Date(startDateLead);
+                if (l.createdAt.toDate() < start) return false;
+              }
+              if (endDateLead) {
+                const end = new Date(endDateLead);
+                end.setHours(23,59,59,999);
+                if (l.createdAt.toDate() > end) return false;
+              }
+              return true;
+            });
+
+            return (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {filteredLeads.map((l) => (
+                  <div key={l.id} className="p-4 border border-yellow-600 rounded-lg bg-gray-800">
+                    {editingLeadId === l.id ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editLeadNome}
+                          onChange={(e) => setEditLeadNome(e.target.value)}
+                          className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                        />
+                        <input
+                          type="text"
+                          value={editLeadCognome}
+                          onChange={(e) => setEditLeadCognome(e.target.value)}
+                          className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                        />
+                        <input
+                          type="email"
+                          value={editLeadEmail}
+                          onChange={(e) => setEditLeadEmail(e.target.value)}
+                          className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                        />
+                        <input
+                          type="text"
+                          value={editLeadTelefono}
+                          onChange={(e) => setEditLeadTelefono(e.target.value)}
+                          className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                        />
+                        <div className="flex space-x-2 justify-end">
+                          <button
+                            onClick={() => setEditingLeadId(null)}
+                            className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600"
+                          >
+                            Annulla
+                          </button>
+                          <button
+                            onClick={handleUpdateLead}
+                            className="bg-yellow-400 text-black px-2 py-1 rounded hover:bg-yellow-500"
+                          >
+                            Salva
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-medium text-white">{l.nome} {l.cognome}</h3>
+                          <p className="text-sm text-gray-300">Email: {l.email}</p>
+                          <p className="text-sm text-gray-300">Telefono: {l.telefono}</p>
+                          {l.sponsor && <p className="text-sm text-gray-300">Sponsor: {l.sponsor}</p>}
+                          <div className="flex items-center space-x-2 mt-2">
+                            <input
+                              type="checkbox"
+                              checked={l.contattato}
+                              onChange={() => handleToggleLeadContacted(l)}
+                            />
+                            <span className="text-sm text-gray-300">Contattato</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-300">
+                            {new Date(l.createdAt.toDate()).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {editingLeadId !== l.id && (
+                      <div className="flex space-x-2 mt-2 justify-end">
+                        <button
+                          onClick={() => {
+                            setEditingLeadId(l.id);
+                            setEditLeadNome(l.nome);
+                            setEditLeadCognome(l.cognome);
+                            setEditLeadEmail(l.email);
+                            setEditLeadTelefono(l.telefono);
+                          }}
+                          className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500 flex items-center"
+                        >
+                          <Pencil className="w-4 h-4 mr-1"/> Modifica
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLead(l.id)}
+                          className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700 flex items-center"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1"/> Elimina
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-300">
-                      {new Date(lead.createdAt.toDate()).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
+                ))}
+
+                {filteredLeads.length === 0 && (
+                  <p className="text-gray-300 text-center py-4">
+                    Nessun lead trovato
+                  </p>
+                )}
               </div>
-            ))}
-
-            {filteredLeads.length === 0 && (
-              <p className="text-gray-300 text-center py-4">
-                Nessun lead trovato
-              </p>
-            )}
-          </div>
+            );
+          })()}
         </div>
       </div>
     </section>

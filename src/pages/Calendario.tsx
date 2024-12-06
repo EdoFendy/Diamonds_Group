@@ -190,7 +190,6 @@ export function Calendario() {
       </div>
 
       {/* Contenuto Principale */}
-      {/* Notare che ora il padding orizzontale è applicato solo da md in su: md:px-40 */}
       <div className="relative z-10 mx-auto p-4 min-h-screen text-white pt-10 md:px-40">
         <div className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-bold mb-2">
@@ -215,7 +214,6 @@ export function Calendario() {
           </div>
         )}
 
-        {/* Qui il padding orizzontale extra viene applicato solo a partire da md: md:px-4 */}
         <div className="md:px-4">
           <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
             {daysOfWeek.map((day) => {
@@ -266,6 +264,8 @@ export function Calendario() {
                     <button
                       onClick={() => {
                         resetModalState();
+                        // Imposta la data del nuovo meeting al giorno selezionato, ad esempio alle 12:00
+                        setNewMeetingData((prev) => ({ ...prev, data: setTimeToDate(day, '12:00') }));
                         setShowModal(true);
                       }}
                       className="mt-4 flex items-center justify-center w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors"
@@ -400,5 +400,7 @@ function setTimeToDate(date: Date, time: string): Date {
 }
 
 function formatInputTime(date: Date): string {
-  return date.toISOString().substring(11, 16);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
 }

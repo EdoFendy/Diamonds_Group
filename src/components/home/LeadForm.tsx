@@ -9,8 +9,6 @@ import { Label } from '../../../components/ui/label';
 import { toast } from 'sonner';
 import { getFirestore, collection, addDoc, Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { app } from '../../lib/firebase'; // Assicurati che il percorso sia corretto
-import logo from '../layout/logo.png'; // Assicurati di aver importato il logo
-import logo2 from '../layout/logo2.png'; // Importa il logo per HeroSection (se necessario)
 import { GradientText } from '../layout/GradientText';
 
 const db = getFirestore(app);
@@ -25,6 +23,7 @@ const leadSchema = z.object({
     .min(9, 'Numero di telefono troppo corto')
     .max(11, 'Numero di telefono troppo lungo')
     .regex(/^[0-9]+$/, 'Numero di telefono non valido'),
+  sponsor: z.string().min(2, 'Lo sponsor è troppo corto'), // Nuovo campo sponsor
 });
 
 type LeadFormData = z.infer<typeof leadSchema>;
@@ -85,6 +84,7 @@ export function LeadForm() {
         cognome: data.cognome,
         email: data.email,
         telefono: data.telefono,
+        sponsor: data.sponsor, // Inviamo anche lo sponsor
         createdAt: Timestamp.now(),
       });
 
@@ -108,18 +108,15 @@ export function LeadForm() {
         <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/20 to-amber-500/20 mix-blend-overlay" />
       </div>
 
-
-
       {/* Contenuto della LeadForm */}
       <div className="relative z-20 container mx-auto px-4">
         <Card className="max-w-md mx-auto bg-black/20 border-yellow-600/50 backdrop-blur-sm p-8">
-        <h2 className="text-4xl font-bold text-center mb-3">
-          <GradientText>Scopri di più</GradientText>
-        </h2>
-        <h3 className="text-l text-center">
-          Verrai presto contattato da noi!
-
-        </h3>
+          <h2 className="text-4xl font-bold text-center mb-3">
+            <GradientText>Scopri di più</GradientText>
+          </h2>
+          <h3 className="text-l text-center">
+            Verrai presto contattato da noi!
+          </h3>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* Campo Nome */}
             <FormField label="Nome" error={errors.nome?.message}>
@@ -161,6 +158,16 @@ export function LeadForm() {
               />
             </FormField>
 
+            {/* Campo Sponsor */}
+            <FormField label="Sponsor" error={errors.sponsor?.message}>
+              <Input
+                type="text"
+                {...register('sponsor')}
+                className="bg-neutral-800 border-yellow-600/50 text-white placeholder-gray-400 w-full"
+                placeholder="Chi ti ha condiviso il sito"
+              />
+            </FormField>
+
             {/* Bottone di Invio */}
             <Button
               type="submit"
@@ -170,7 +177,6 @@ export function LeadForm() {
               {isSubmitting ? 'Invio in corso...' : 'Invia Richiesta'}
             </Button>
           </form>
-
         </Card>
       </div>
 

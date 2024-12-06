@@ -13,6 +13,7 @@ export interface User {
   referral: string;
   ruolo: Ruolo;
   dataRegistrazione: Date;
+  sponsor: string;
 }
 
 // types.ts
