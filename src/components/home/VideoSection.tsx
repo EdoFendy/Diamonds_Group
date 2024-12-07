@@ -18,13 +18,14 @@ function VideoSection() {
         {/* Video Player Responsivo */}
         <div className="flex justify-center mb-16">
           <div className="w-full max-w-6xl relative pb-[56.25%]"> {/* 16:9 Aspect Ratio */}
-            <ReactPlayer
-              url="https://youtu.be/BAxBYds1dpU?si=yhSXQhcvArvTfLU-" // Inserisci qui l'URL del tuo video
-              controls
-              width="100%"
-              height="90%"
-              className="absolute top-0 left-0 rounded-lg shadow-lg"
-            />
+          <ReactPlayer
+  url="https://youtu.be/OQaUH_24AS8"
+  controls
+  width="100%"
+  height="90%"     
+  muted={false}       
+  className="absolute top-0 left-0 rounded-lg shadow-lg"
+/>
           </div>
         </div>
 
