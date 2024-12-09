@@ -11,6 +11,7 @@ import { Toaster } from './components/ui/Toaster';
 import { Footer } from '../src/pages/footer'; // Assicurati che il percorso sia corretto
 import { Presentazioni } from '../src/pages/Presentazioni';
 import { Calendario } from '../src/pages/Calendario';
+import { PolicyPage } from '../src/pages/policy';
 
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/presentazioni" element={<Presentazioni />} />
               <Route path="/calendario" element={<Calendario />} />
+              <Route path="/policy" element={<PolicyPage />} />
               
               <Route
                 path="/admin"

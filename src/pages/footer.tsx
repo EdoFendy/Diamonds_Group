@@ -1,4 +1,5 @@
 import { Coins } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export function Footer() {
   return (
@@ -16,10 +17,39 @@ export function Footer() {
             </p>
           </div>
 
-          {/* Eventuali Altre Informazioni (Opzionale) */}
-          {/* <div className="space-y-2">
-            <p className="text-sm text-gray-400">Eventuali altre informazioni o link esterni</p>
-          </div> */}
+          {/* Link alle pagine principali */}
+          <div className="flex flex-wrap justify-center space-x-4 text-sm text-gray-400">
+            <Link
+              to="/"
+              className="hover:text-yellow-400 transition-colors"
+            >
+              Home
+            </Link>
+            <Link
+              to="/presentazioni"
+              className="hover:text-yellow-400 transition-colors"
+            >
+              Presentazioni
+            </Link>
+            <Link
+              to="/calendario"
+              className="hover:text-yellow-400 transition-colors"
+            >
+              Calendario
+            </Link>
+            <Link
+              to="/formazione"
+              className="hover:text-yellow-400 transition-colors"
+            >
+              Formazione
+            </Link>
+            <Link
+              to="/policy"
+              className="hover:text-yellow-400 transition-colors"
+            >
+              Policy
+            </Link>
+          </div>
         </div>
 
         {/* Sezione Copyright */}

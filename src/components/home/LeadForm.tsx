@@ -8,12 +8,12 @@ import { Button } from '../../../components/ui/button';
 import { Label } from '../../../components/ui/label';
 import { toast } from 'sonner';
 import { getFirestore, collection, addDoc, Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
-import { app } from '../../lib/firebase'; // Assicurati che il percorso sia corretto
+import { app } from '../../lib/firebase';
 import { GradientText } from '../layout/GradientText';
 
 const db = getFirestore(app);
 
-// Schema di validazione con Zod
+// Schema di validazione con Zod, aggiunta accettazionePolicy
 const leadSchema = z.object({
   nome: z.string().min(2, 'Il nome è troppo corto'),
   cognome: z.string().min(2, 'Il cognome è troppo corto'),
@@ -23,12 +23,14 @@ const leadSchema = z.object({
     .min(9, 'Numero di telefono troppo corto')
     .max(11, 'Numero di telefono troppo lungo')
     .regex(/^[0-9]+$/, 'Numero di telefono non valido'),
-  sponsor: z.string().min(2, 'Lo sponsor è troppo corto'), // Nuovo campo sponsor
+  sponsor: z.string().min(2, 'Lo sponsor è troppo corto'),
+  accettazionePolicy: z.boolean().refine(val => val === true, {
+    message: 'Devi accettare le policy prima di inviare il form',
+  }),
 });
 
 type LeadFormData = z.infer<typeof leadSchema>;
 
-// Component per i campi del form
 interface FormFieldProps {
   label: string;
   error?: string;
@@ -55,9 +57,8 @@ export function LeadForm() {
     resolver: zodResolver(leadSchema),
   });
 
-  const [counter, setCounter] = useState(0); // Aggiunto il contatore
+  const [counter, setCounter] = useState(0);
 
-  // Funzione per incrementare il contatore ogni volta che un utente visita la pagina
   useEffect(() => {
     const incrementCounter = async () => {
       const counterDocRef = doc(db, 'siteData', 'visitorCounter');
@@ -78,17 +79,15 @@ export function LeadForm() {
 
   const onSubmit = async (data: LeadFormData) => {
     try {
-      // Aggiungi i dati del lead a Firestore
       await addDoc(collection(db, 'leads'), {
         nome: data.nome,
         cognome: data.cognome,
         email: data.email,
         telefono: data.telefono,
-        sponsor: data.sponsor, // Inviamo anche lo sponsor
+        sponsor: data.sponsor,
         createdAt: Timestamp.now(),
       });
 
-      // Mostra un toast di successo
       toast.success('Richiesta inviata con successo!');
       reset();
     } catch (error) {
@@ -99,16 +98,13 @@ export function LeadForm() {
 
   return (
     <section id="lead-form" className="relative py-24 bg-black text-white">
-      {/* Gradient Overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-black via-black/50 to-black z-10" />
 
-      {/* Background Image and Gradient Overlay */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2070')] bg-repeat bg-cover bg-center opacity-20" />
         <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/20 to-amber-500/20 mix-blend-overlay" />
       </div>
 
-      {/* Contenuto della LeadForm */}
       <div className="relative z-20 container mx-auto px-4">
         <Card className="max-w-md mx-auto bg-black/20 border-yellow-600/50 backdrop-blur-sm p-8">
           <h2 className="text-4xl font-bold text-center mb-3">
@@ -118,7 +114,6 @@ export function LeadForm() {
             Verrai presto contattato da noi!
           </h3>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Campo Nome */}
             <FormField label="Nome" error={errors.nome?.message}>
               <Input
                 type="text"
@@ -128,7 +123,6 @@ export function LeadForm() {
               />
             </FormField>
 
-            {/* Campo Cognome */}
             <FormField label="Cognome" error={errors.cognome?.message}>
               <Input
                 type="text"
@@ -138,7 +132,6 @@ export function LeadForm() {
               />
             </FormField>
 
-            {/* Campo Email */}
             <FormField label="Email" error={errors.email?.message}>
               <Input
                 type="email"
@@ -148,7 +141,6 @@ export function LeadForm() {
               />
             </FormField>
 
-            {/* Campo Telefono */}
             <FormField label="Telefono" error={errors.telefono?.message}>
               <Input
                 type="text"
@@ -158,7 +150,6 @@ export function LeadForm() {
               />
             </FormField>
 
-            {/* Campo Sponsor */}
             <FormField label="Sponsor" error={errors.sponsor?.message}>
               <Input
                 type="text"
@@ -168,7 +159,27 @@ export function LeadForm() {
               />
             </FormField>
 
-            {/* Bottone di Invio */}
+            {/* Campo Accettazione Policy */}
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <input
+                  id="accettazionePolicy"
+                  type="checkbox"
+                  {...register('accettazionePolicy')}
+                  className="h-4 w-4 border-yellow-600/50 bg-neutral-800 text-yellow-600 focus:ring-0"
+                />
+                <label htmlFor="accettazionePolicy" className="text-white text-sm">
+                  Accetto le{' '}
+                  <a href="/policy" target="_blank" rel="noopener noreferrer" className="underline">
+                    policy per il trattamento dei dati
+                  </a>
+                </label>
+              </div>
+              {errors.accettazionePolicy && (
+                <p className="text-red-500 text-sm">{errors.accettazionePolicy.message}</p>
+              )}
+            </div>
+
             <Button
               type="submit"
               disabled={isSubmitting}
@@ -179,7 +190,6 @@ export function LeadForm() {
           </form>
         </Card>
       </div>
-
     </section>
   );
 }
