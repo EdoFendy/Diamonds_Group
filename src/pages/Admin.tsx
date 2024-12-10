@@ -1,236 +1,300 @@
+// Admin.tsx
 "use client";
 
-import React from 'react';
-import { useAuthStore } from '../store/authStore';
-import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { useForm, SubmitHandler } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { createNewUser } from '../services/admin'; // Assicurati del percorso corretto
+import { useToast } from '../hooks/useToast';
+import { UserPlus, Users, Pencil, Trash2 } from 'lucide-react';
+import { User, Ruolo, Lead } from '../types';
+import { getFirestore, collection, getDocs, Timestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { app } from '../lib/firebase';
-import { GradientText } from '../components/layout/GradientText';
-import { User, Ruolo } from '../types';
-import { UserPlus, Pencil, Trash2 } from 'lucide-react';
+import { GradientText } from '../components/layout/GradientText'; // Assicurati che il percorso sia corretto
+
+// Definizione dei ruoli disponibili
+const ruoliDisponibili: Ruolo[] = ["Base", "Avanzato", "admin", "utente"];
+
+// Schema di validazione per la creazione di un nuovo utente
+const userSchema = z.object({
+  nome: z.string().min(2, 'Nome troppo corto'),
+  cognome: z.string().min(2, 'Cognome troppo corto'),
+  ruolo: z.enum(ruoliDisponibili, { required_error: 'Ruolo obbligatorio' }),
+  sponsor: z.string().min(2, 'Sponsor troppo corto').optional(), // Sponsor opzionale
+});
+
+// Tipo per i dati del form utente
+type UserFormData = z.infer<typeof userSchema>;
+
+// Schema di validazione per la modifica di un lead
+const leadSchema = z.object({
+  nome: z.string().min(2, 'Nome troppo corto'),
+  cognome: z.string().min(2, 'Cognome troppo corto'),
+  email: z.string().email('Email non valida'),
+  telefono: z.string().min(9, 'Numero di telefono troppo corto').max(11, 'Numero di telefono troppo lungo').regex(/^[0-9]+$/, 'Numero non valido'),
+  contattato: z.boolean(),
+  commenti: z.string().optional(), // Campo Commenti aggiunto
+  sponsor: z.string().min(2, 'Sponsor troppo corto').optional(), // Campo Sponsor aggiunto
+});
+
+type LeadFormData = z.infer<typeof leadSchema>;
 
 const db = getFirestore(app);
 
-const ruoliDisponibili: Ruolo[] = ["Base", "Avanzato", "admin", "utente"];
-
-type Lead = {
-  id: string;
-  nome: string;
-  cognome: string;
-  email: string;
-  telefono: string;
-  createdAt: Timestamp;
-  contattato: boolean;
-  sponsor: string; // Aggiungiamo sponsor anche nei leads
-};
-
 export function Admin() {
-  const { user } = useAuthStore();
-  const [users, setUsers] = React.useState<User[]>([]);
-  const [leads, setLeads] = React.useState<Lead[]>([]);
+  const { addToast } = useToast();
+  const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
 
-  // Stati per nuovo utente
-  const [nome, setNome] = React.useState('');
-  const [cognome, setCognome] = React.useState('');
-  const [sponsor, setSponsor] = React.useState('');
-  const [ruolo, setRuolo] = React.useState<Ruolo>('utente');
+  // Stati per i filtri utenti
+  const [searchUsersNome, setSearchUsersNome] = useState('');
+  const [searchUsersCognome, setSearchUsersCognome] = useState('');
+  const [searchUsersSponsor, setSearchUsersSponsor] = useState('');
+  const [searchUsersCodice, setSearchUsersCodice] = useState('');
 
-  // Stati per modifica utente
-  const [editingUserId, setEditingUserId] = React.useState<string | null>(null);
-  const [editNome, setEditNome] = React.useState('');
-  const [editCognome, setEditCognome] = React.useState('');
-  const [editSponsor, setEditSponsor] = React.useState('');
-  const [editRuolo, setEditRuolo] = React.useState<Ruolo>('utente');
+  // Stati per i filtri leads
+  const [searchLeadsNome, setSearchLeadsNome] = useState('');
+  const [searchLeadsCognome, setSearchLeadsCognome] = useState('');
+  const [searchLeadsEmail, setSearchLeadsEmail] = useState('');
+  const [searchLeadsTelefono, setSearchLeadsTelefono] = useState('');
 
-  // Filtri per leads (nessun form di creazione leads)
-  const [searchNameLead, setSearchNameLead] = React.useState('');
-  const [searchSponsorLead, setSearchSponsorLead] = React.useState('');
-  const [startDateLead, setStartDateLead] = React.useState('');
-  const [endDateLead, setEndDateLead] = React.useState('');
+  // Stati per modali di modifica
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
+  const [editUserData, setEditUserData] = useState<User | null>(null);
 
-  // Stati per modifica lead
-  const [editingLeadId, setEditingLeadId] = React.useState<string | null>(null);
-  const [editLeadNome, setEditLeadNome] = React.useState('');
-  const [editLeadCognome, setEditLeadCognome] = React.useState('');
-  const [editLeadEmail, setEditLeadEmail] = React.useState('');
-  const [editLeadTelefono, setEditLeadTelefono] = React.useState('');
+  const [showEditLeadModal, setShowEditLeadModal] = useState(false);
+  const [editLeadData, setEditLeadData] = useState<Lead | null>(null);
 
-  React.useEffect(() => {
-    const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const usersData: User[] = snapshot.docs.map((doc) => ({
-        ...(doc.data() as Omit<User, 'id'>),
-        id: doc.id,
-      }));
-      setUsers(usersData);
-    });
+  // Form per nuovi utenti
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<UserFormData>({
+    resolver: zodResolver(userSchema),
+  });
 
-    const unsubscribeLeads = onSnapshot(collection(db, 'leads'), (snapshot) => {
-      const leadsData: Lead[] = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          nome: data.nome,
-          cognome: data.cognome,
-          email: data.email,
-          telefono: data.telefono,
-          createdAt: data.createdAt,
-          contattato: data.contattato || false,
-          sponsor: data.sponsor || '',
-        } as Lead;
-      });
-      setLeads(leadsData);
-    });
+  // Form per lead (nel modal)
+  const { register: registerLead, handleSubmit: handleSubmitLead, reset: resetLead, formState: { errors: errorsLead, isSubmitting: isSubmittingLead } } = useForm<LeadFormData>({
+    resolver: zodResolver(leadSchema),
+  });
 
-    return () => {
-      unsubscribeUsers();
-      unsubscribeLeads();
-    };
-  }, []);
-
-  // Aggiungi un nuovo utente
-  const handleAddUser = async () => {
+  // Funzione per creare un nuovo utente
+  const onSubmitUser: SubmitHandler<UserFormData> = async (data) => {
     try {
-      const newUser = {
-        nome,
-        cognome,
-        sponsor,
-        ruolo,
+      const newUser = await createNewUser({
+        ...data,
         dataRegistrazione: new Date(),
-        codiceUnivoco: Math.random().toString(36).substring(2,10).toUpperCase()
-      };
-      await addDoc(collection(db, 'users'), newUser);
-      setNome(''); setCognome(''); setSponsor(''); setRuolo('utente');
-    } catch (error) {
-      console.error('Errore nella creazione utente:', error);
-    }
-  };
-
-  const handleUpdateUser = async () => {
-    if (!editingUserId) return;
-    try {
-      const userRef = doc(db, 'users', editingUserId);
-      await updateDoc(userRef, {
-        nome: editNome,
-        cognome: editCognome,
-        sponsor: editSponsor,
-        ruolo: editRuolo,
       });
-      setEditingUserId(null);
-    } catch (error) {
-      console.error('Errore nell\'aggiornamento utente:', error);
+      addToast(`Utente creato con successo. Codice: ${newUser.codiceUnivoco}`, 'success');
+      setUsers((prev) => [...prev, newUser]);
+      setFilteredUsers((prev) => [...prev, newUser]);
+      reset();
+    } catch (error: any) {
+      console.error('Errore durante la creazione dell\'utente:', error);
+      addToast('Errore durante la creazione dell\'utente: ' + (error.message || error), 'error');
     }
   };
 
-  const handleDeleteUser = async (id: string) => {
+  // Effetto per recuperare utenti e leads
+  useEffect(() => {
+    const fetchLeads = async () => {
+      try {
+        const leadsCollection = collection(db, 'leads');
+        const leadSnapshot = await getDocs(leadsCollection);
+        const leadsList = leadSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            nome: data.nome,
+            cognome: data.cognome,
+            email: data.email,
+            telefono: data.telefono,
+            createdAt: data.createdAt,
+            contattato: data.contattato || false,
+            commenti: data.commenti || '',
+            sponsor: data.sponsor || '', // Recupera il campo sponsor se presente
+          } as Lead;
+        });
+        setLeads(leadsList);
+        setFilteredLeads(leadsList);
+      } catch (error) {
+        console.error('Errore durante il recupero dei leads:', error);
+        addToast('Errore durante il recupero dei leads', 'error');
+      }
+    };
+
+    const fetchUsers = async () => {
+      try {
+        const usersCollection = collection(db, 'users');
+        const userSnapshot = await getDocs(usersCollection);
+        const usersList = userSnapshot.docs.map(doc => {
+          const data = doc.data() as User;
+          return {
+            ...data,
+            id: doc.id,
+          };
+        });
+        setUsers(usersList);
+        setFilteredUsers(usersList);
+      } catch (error) {
+        console.error('Errore durante il recupero degli utenti:', error);
+        addToast('Errore durante il recupero degli utenti', 'error');
+      }
+    };
+
+    fetchLeads();
+    fetchUsers();
+  }, [addToast]);
+
+  // Effetto per filtrare utenti
+  useEffect(() => {
+    setFilteredUsers(users.filter(user =>
+      (user.nome?.toLowerCase() ?? '').includes(searchUsersNome.toLowerCase()) &&
+      (user.cognome?.toLowerCase() ?? '').includes(searchUsersCognome.toLowerCase()) &&
+      ((user.sponsor?.toLowerCase() ?? '').includes(searchUsersSponsor.toLowerCase())) &&
+      (user.codiceUnivoco?.toLowerCase() ?? '').includes(searchUsersCodice.toLowerCase())
+    ));
+  }, [users, searchUsersNome, searchUsersCognome, searchUsersSponsor, searchUsersCodice]);
+
+  // Effetto per filtrare leads
+  useEffect(() => {
+    setFilteredLeads(leads.filter(lead =>
+      (lead.nome?.toLowerCase() ?? '').includes(searchLeadsNome.toLowerCase()) &&
+      (lead.cognome?.toLowerCase() ?? '').includes(searchLeadsCognome.toLowerCase()) &&
+      (lead.email?.toLowerCase() ?? '').includes(searchLeadsEmail.toLowerCase()) &&
+      (lead.telefono?.toLowerCase() ?? '').includes(searchLeadsTelefono.toLowerCase())
+    ));
+  }, [leads, searchLeadsNome, searchLeadsCognome, searchLeadsEmail, searchLeadsTelefono]);
+
+  // Funzioni per modificare/eliminare utenti
+  const handleEditUser = (user: User) => {
+    setEditUserData(user);
+    setShowEditUserModal(true);
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm("Sei sicuro di voler eliminare questo utente?")) return;
     try {
-      const userRef = doc(db, 'users', id);
+      const userRef = doc(db, 'users', userId);
       await deleteDoc(userRef);
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      setFilteredUsers(prev => prev.filter(u => u.id !== userId));
+      addToast('Utente eliminato con successo', 'success');
     } catch (error) {
-      console.error('Errore nell\'eliminazione utente:', error);
+      console.error('Errore durante l\'eliminazione utente:', error);
+      addToast('Errore durante l\'eliminazione utente', 'error');
     }
   };
 
-  const handleEditUser = (u: User) => {
-    setEditingUserId(u.id);
-    setEditNome(u.nome);
-    setEditCognome(u.cognome);
-    setEditSponsor(u.sponsor || '');
-    setEditRuolo(u.ruolo);
-  };
-
-  // Modifica/Salvataggio Lead
-  const handleEditLead = (l: Lead) => {
-    setEditingLeadId(l.id);
-    setEditLeadNome(l.nome);
-    setEditLeadCognome(l.cognome);
-    setEditLeadEmail(l.email);
-    setEditLeadTelefono(l.telefono);
-  };
-
-  const handleUpdateLead = async () => {
-    if (!editingLeadId) return;
+  const handleUpdateUserData = async (updatedData: UserFormData) => {
+    if (!editUserData) return;
     try {
-      const leadRef = doc(db, 'leads', editingLeadId);
-      await updateDoc(leadRef, {
-        nome: editLeadNome,
-        cognome: editLeadCognome,
-        email: editLeadEmail,
-        telefono: editLeadTelefono,
+      const userRef = doc(db, 'users', editUserData.id);
+      await updateDoc(userRef, {
+        nome: updatedData.nome,
+        cognome: updatedData.cognome,
+        ruolo: updatedData.ruolo,
+        sponsor: updatedData.sponsor ?? '',
       });
-      setEditingLeadId(null);
+      setUsers(prev => prev.map(u => u.id === editUserData.id ? { ...u, ...updatedData } : u));
+      setFilteredUsers(prev => prev.map(u => u.id === editUserData.id ? { ...u, ...updatedData } : u));
+      addToast('Utente aggiornato con successo', 'success');
+      setShowEditUserModal(false);
+      setEditUserData(null);
     } catch (error) {
-      console.error('Errore nell\'aggiornamento lead:', error);
+      console.error('Errore durante l\'aggiornamento utente:', error);
+      addToast('Errore durante l\'aggiornamento utente', 'error');
     }
   };
 
-  const handleDeleteLead = async (id: string) => {
+  // Funzioni per modificare/eliminare leads
+  const handleEditLead = (lead: Lead) => {
+    setEditLeadData(lead);
+    setShowEditLeadModal(true);
+    resetLead({
+      nome: lead.nome,
+      cognome: lead.cognome,
+      email: lead.email,
+      telefono: lead.telefono,
+      contattato: lead.contattato || false,
+      commenti: lead.commenti || '',
+      sponsor: lead.sponsor || '',
+    });
+  };
+
+  const handleDeleteLead = async (leadId: string) => {
+    if (!confirm("Sei sicuro di voler eliminare questo lead?")) return;
     try {
-      const leadRef = doc(db, 'leads', id);
+      const leadRef = doc(db, 'leads', leadId);
       await deleteDoc(leadRef);
+      setLeads(prev => prev.filter(l => l.id !== leadId));
+      setFilteredLeads(prev => prev.filter(l => l.id !== leadId));
+      addToast('Lead eliminato con successo', 'success');
     } catch (error) {
-      console.error('Errore nell\'eliminazione lead:', error);
+      console.error('Errore durante l\'eliminazione lead:', error);
+      addToast('Errore durante l\'eliminazione lead', 'error');
     }
   };
 
-  const handleToggleLeadContacted = async (lead: Lead) => {
+  const handleUpdateLead = async (data: LeadFormData) => {
+    if (!editLeadData) return;
+    try {
+      const leadRef = doc(db, 'leads', editLeadData.id);
+      await updateDoc(leadRef, {
+        nome: data.nome,
+        cognome: data.cognome,
+        email: data.email,
+        telefono: data.telefono,
+        contattato: data.contattato,
+        commenti: data.commenti ?? '',
+        sponsor: data.sponsor ?? '',
+      });
+      setLeads(prev => prev.map(l => l.id === editLeadData.id ? { ...l, ...data } : l));
+      setFilteredLeads(prev => prev.map(l => l.id === editLeadData.id ? { ...l, ...data } : l));
+      addToast('Lead aggiornato con successo', 'success');
+      setShowEditLeadModal(false);
+      setEditLeadData(null);
+    } catch (error) {
+      console.error('Errore durante l\'aggiornamento lead:', error);
+      addToast('Errore durante l\'aggiornamento lead', 'error');
+    }
+  };
+
+  // Funzione per toggle del campo "contattato" nei leads
+  const toggleLeadContattato = async (lead: Lead) => {
     try {
       const leadRef = doc(db, 'leads', lead.id);
-      await updateDoc(leadRef, {
-        contattato: !lead.contattato
-      });
+      await updateDoc(leadRef, { contattato: !lead.contattato });
+      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, contattato: !l.contattato } : l));
+      setFilteredLeads(prev => prev.map(l => l.id === lead.id ? { ...l, contattato: !l.contattato } : l));
+      addToast(`Lead ${!lead.contattato ? 'contattato' : 'non contattato'}`, 'success');
     } catch (error) {
-      console.error('Errore nell\'aggiornamento contatto lead:', error);
+      console.error('Errore nel toggle contattato:', error);
+      addToast('Errore durante l\'aggiornamento del contatto lead', 'error');
     }
   };
-
-  // Filtraggio leads in base ai nuovi criteri: nome, sponsor, date
-  const filteredLeads = React.useMemo(() => {
-    return leads.filter((l) => {
-      // Nome filter
-      if (searchNameLead && !l.nome.toLowerCase().includes(searchNameLead.toLowerCase())) {
-        return false;
-      }
-
-      // Sponsor filter
-      if (searchSponsorLead && !l.sponsor.toLowerCase().includes(searchSponsorLead.toLowerCase())) {
-        return false;
-      }
-
-      // Date filter (tra startDateLead e endDateLead se presenti)
-      if (startDateLead) {
-        const startDate = new Date(startDateLead);
-        if (l.createdAt.toDate() < startDate) {
-          return false;
-        }
-      }
-      if (endDateLead) {
-        const endDate = new Date(endDateLead);
-        // per filtrare fino a fine giornata endDate, possiamo aggiungere 1 giorno
-        endDate.setHours(23,59,59,999);
-        if (l.createdAt.toDate() > endDate) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [leads, searchNameLead, searchSponsorLead, startDateLead, endDateLead]);
 
   return (
     <section className="relative min-h-screen bg-black text-white">
-      <div className="absolute inset-0 z-0">
+      {/* Overlay Gradient */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black via-black/50 to-black z-10" />
+
+      {/* Background Image and Gradient Overlay */}
+      <div className="absolute inset-0 overflow-hidden">
         <div
-          className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2070')] bg-cover bg-center opacity-40"
+          className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2070')] bg-cover bg-center opacity-20"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-black/50 to-black" />
+        <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/20 to-amber-500/20 mix-blend-overlay" />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto p-4 min-h-screen text-white">
+      {/* Contenuto Principale */}
+      <div className="relative z-20 max-w-6xl mx-auto p-4 min-h-screen">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">
-            <GradientText>Admin</GradientText>
+            <GradientText>Pannello Amministratore</GradientText>
           </h1>
           <p className="text-gray-300">
-            Gestione semplice di utenti e leads, stile Formazione.
+            Gestisci gli utenti e monitora i leads
           </p>
         </div>
 
@@ -244,324 +308,522 @@ export function Admin() {
               </h2>
             </div>
 
-            <div className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmitUser)} className="space-y-4">
+              {/* Campo Nome */}
               <div>
-                <label className="block text-sm font-medium text-yellow-600 mb-1">Nome</label>
+                <label
+                  htmlFor="nome"
+                  className="block text-sm font-medium text-yellow-600 mb-1"
+                >
+                  Nome
+                </label>
                 <input
                   type="text"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                  id="nome"
+                  {...register('nome')}
+                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
                   placeholder="Nome"
                 />
+                {errors.nome && (
+                  <p className="text-red-500 text-sm mt-1">{errors.nome.message}</p>
+                )}
               </div>
 
+              {/* Campo Cognome */}
               <div>
-                <label className="block text-sm font-medium text-yellow-600 mb-1">Cognome</label>
+                <label
+                  htmlFor="cognome"
+                  className="block text-sm font-medium text-yellow-600 mb-1"
+                >
+                  Cognome
+                </label>
                 <input
                   type="text"
-                  value={cognome}
-                  onChange={(e) => setCognome(e.target.value)}
-                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                  id="cognome"
+                  {...register('cognome')}
+                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
                   placeholder="Cognome"
                 />
+                {errors.cognome && (
+                  <p className="text-red-500 text-sm mt-1">{errors.cognome.message}</p>
+                )}
               </div>
 
+              {/* Campo Selezione Ruolo */}
               <div>
-                <label className="block text-sm font-medium text-yellow-600 mb-1">Ruolo</label>
-                <select
-                  value={ruolo}
-                  onChange={(e) => setRuolo(e.target.value as Ruolo)}
-                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                <label
+                  htmlFor="ruolo"
+                  className="block text-sm font-medium text-yellow-600 mb-1"
                 >
-                  {ruoliDisponibili.map((r) => (
-                    <option key={r} value={r}>{r}</option>
+                  Ruolo
+                </label>
+                <select
+                  id="ruolo"
+                  {...register('ruolo')}
+                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                  defaultValue=""
+                >
+                  <option value="" disabled>Seleziona un ruolo</option>
+                  {ruoliDisponibili.map((ruolo) => (
+                    <option key={ruolo} value={ruolo}>
+                      {ruolo}
+                    </option>
                   ))}
                 </select>
+                {errors.ruolo && (
+                  <p className="text-red-500 text-sm mt-1">{errors.ruolo.message}</p>
+                )}
               </div>
 
-              
+              {/* Campo Sponsor */}
               <div>
-                <label className="block text-sm font-medium text-yellow-600 mb-1">Sponsor</label>
+                <label
+                  htmlFor="sponsor"
+                  className="block text-sm font-medium text-yellow-600 mb-1"
+                >
+                  Sponsor (opzionale)
+                </label>
                 <input
                   type="text"
-                  value={sponsor}
-                  onChange={(e) => setSponsor(e.target.value)}
-                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                  placeholder="Sponsor"
+                  id="sponsor"
+                  {...register('sponsor')}
+                  className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                  placeholder="Sponsor se presente"
                 />
+                {errors.sponsor && (
+                  <p className="text-red-500 text-sm mt-1">{errors.sponsor.message}</p>
+                )}
               </div>
 
+              {/* Bottone di Invio */}
               <button
-                onClick={handleAddUser}
-                className="w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors"
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors disabled:opacity-50"
               >
-                Aggiungi Utente
+                {isSubmitting ? 'Creazione in corso...' : 'Crea Utente'}
               </button>
-            </div>
+            </form>
           </div>
 
-          {/* Lista Utenti */}
+          {/* Filtro Utenti */}
           <div className="bg-black/50 p-6 rounded-lg border border-yellow-600/20 shadow-sm backdrop-blur-sm">
             <h2 className="text-xl font-semibold mb-4">
+              <GradientText>Filtri Utenti</GradientText>
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+              <input
+                type="text"
+                value={searchUsersNome}
+                onChange={(e) => setSearchUsersNome(e.target.value)}
+                className="px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                placeholder="Nome"
+              />
+              <input
+                type="text"
+                value={searchUsersCognome}
+                onChange={(e) => setSearchUsersCognome(e.target.value)}
+                className="px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                placeholder="Cognome"
+              />
+              <input
+                type="text"
+                value={searchUsersSponsor}
+                onChange={(e) => setSearchUsersSponsor(e.target.value)}
+                className="px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                placeholder="Sponsor"
+              />
+              <input
+                type="text"
+                value={searchUsersCodice}
+                onChange={(e) => setSearchUsersCodice(e.target.value)}
+                className="px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+                placeholder="Codice Univoco"
+              />
+            </div>
+
+            <h2 className="text-xl font-semibold mb-2">
               <GradientText>Utenti</GradientText>
             </h2>
-
-            <div className="space-y-4 max-h-96 overflow-y-auto">
-              {users.map(u => (
-                <div key={u.id} className="p-4 border border-yellow-600 rounded-lg bg-gray-800">
-                  {editingUserId === u.id ? (
-                    <div className="space-y-2">
-                      <input
-                        type="text"
-                        value={editNome}
-                        onChange={(e) => setEditNome(e.target.value)}
-                        className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                      />
-                      <input
-                        type="text"
-                        value={editCognome}
-                        onChange={(e) => setEditCognome(e.target.value)}
-                        className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                      />
-
-                      <input
-                        type="text"
-                        value={editSponsor}
-                        onChange={(e) => setEditSponsor(e.target.value)}
-                        className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                      />
-                      <select
-                        value={editRuolo}
-                        onChange={(e) => setEditRuolo(e.target.value as Ruolo)}
-                        className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                      >
-                        {ruoliDisponibili.map((r) => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
-                      <div className="flex space-x-2 justify-end">
-                        <button
-                          onClick={() => setEditingUserId(null)}
-                          className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600"
-                        >
-                          Annulla
-                        </button>
-                        <button
-                          onClick={handleUpdateUser}
-                          className="bg-yellow-400 text-black px-2 py-1 rounded hover:bg-yellow-500"
-                        >
-                          Salva
-                        </button>
-                      </div>
+            <div className="max-h-96 overflow-y-auto space-y-4">
+              {filteredUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="p-4 border border-yellow-600 rounded-lg bg-gray-800 transition-colors"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-medium text-white">
+                        {user.nome} {user.cognome}
+                      </h3>
+                      {user.sponsor && (
+                        <p className="text-sm text-gray-300">Sponsor: {user.sponsor}</p>
+                      )}
+                      <p className="text-sm text-gray-300">Ruolo: {user.ruolo}</p>
                     </div>
-                  ) : (
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-medium text-white">{u.nome} {u.cognome}</h3>
-                        {u.sponsor && <p className="text-sm text-gray-300">Sponsor: {u.sponsor}</p>}
-                        <p className="text-sm text-gray-300">Ruolo: {u.ruolo}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-mono bg-yellow-600 text-black px-2 py-1 rounded">
-                          {u.codiceUnivoco}
-                        </p>
-                      </div>
+                    <div className="text-right">
+                      <p className="text-sm font-mono bg-yellow-600 text-black px-2 py-1 rounded">
+                        {user.codiceUnivoco}
+                      </p>
                     </div>
-                  )}
-
-                  {editingUserId !== u.id && (
-                    <div className="flex space-x-2 mt-2 justify-end">
-                      <button
-                        onClick={() => {
-                          setEditNome(u.nome);
-                          setEditCognome(u.cognome);
-                          setEditSponsor(u.sponsor || '');
-                          setEditRuolo(u.ruolo);
-                          setEditingUserId(u.id);
-                        }}
-                        className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500 flex items-center"
-                      >
-                        <Pencil className="w-4 h-4 mr-1"/> Modifica
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(u.id)}
-                        className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700 flex items-center"
-                      >
-                        <Trash2 className="w-4 h-4 mr-1"/> Elimina
-                      </button>
-                    </div>
-                  )}
+                  </div>
+                  <div className="flex space-x-2 mt-2 justify-end">
+                    <button onClick={() => handleEditUser(user)} className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500 flex items-center space-x-1">
+                      <Pencil className="w-4 h-4" />
+                      <span>Modifica</span>
+                    </button>
+                    <button onClick={() => handleDeleteUser(user.id)} className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700 flex items-center space-x-1">
+                      <Trash2 className="w-4 h-4" />
+                      <span>Elimina</span>
+                    </button>
+                  </div>
                 </div>
               ))}
 
-              {users.length === 0 && (
+              {filteredUsers.length === 0 && (
                 <p className="text-gray-300 text-center py-4">
-                  Nessun utente presente
+                  Nessun utente trovato
                 </p>
               )}
             </div>
           </div>
         </div>
 
-        {/* Leads con Filtri per data, sponsor o nome (nessun form) */}
+        {/* Lista Leads con Filtri */}
         <div className="bg-black/50 p-6 rounded-lg border border-yellow-600/20 shadow-sm backdrop-blur-sm mt-8">
           <h2 className="text-xl font-semibold mb-4">
-            <GradientText>Leads</GradientText>
+            <GradientText>Filtri Leads</GradientText>
           </h2>
-
-          <div className="grid md:grid-cols-3 gap-2 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
             <input
               type="text"
-              value={searchNameLead}
-              onChange={(e) => setSearchNameLead(e.target.value)}
-              className="px-3 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
+              value={searchLeadsNome}
+              onChange={(e) => setSearchLeadsNome(e.target.value)}
+              className="px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
               placeholder="Nome"
             />
             <input
               type="text"
-              value={searchSponsorLead}
-              onChange={(e) => setSearchSponsorLead(e.target.value)}
-              className="px-3 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-              placeholder="Sponsor"
+              value={searchLeadsCognome}
+              onChange={(e) => setSearchLeadsCognome(e.target.value)}
+              className="px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+              placeholder="Cognome"
             />
-            <div className="flex space-x-1">
-              <input
-                type="date"
-                value={startDateLead}
-                onChange={(e) => setStartDateLead(e.target.value)}
-                className="px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md w-1/2"
-              />
-              <input
-                type="date"
-                value={endDateLead}
-                onChange={(e) => setEndDateLead(e.target.value)}
-                className="px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md w-1/2"
-              />
-            </div>
+            <input
+              type="text"
+              value={searchLeadsEmail}
+              onChange={(e) => setSearchLeadsEmail(e.target.value)}
+              className="px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+              placeholder="Email"
+            />
+            <input
+              type="text"
+              value={searchLeadsTelefono}
+              onChange={(e) => setSearchLeadsTelefono(e.target.value)}
+              className="px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md"
+              placeholder="Telefono"
+            />
           </div>
 
-          {/* Filtraggio leads */}
-          {(() => {
-            const filteredLeads = leads.filter((l) => {
-              if (searchNameLead && !l.nome.toLowerCase().includes(searchNameLead.toLowerCase())) return false;
-              if (searchSponsorLead && !l.sponsor.toLowerCase().includes(searchSponsorLead.toLowerCase())) return false;
-
-              if (startDateLead) {
-                const start = new Date(startDateLead);
-                if (l.createdAt.toDate() < start) return false;
-              }
-              if (endDateLead) {
-                const end = new Date(endDateLead);
-                end.setHours(23,59,59,999);
-                if (l.createdAt.toDate() > end) return false;
-              }
-              return true;
-            });
-
-            return (
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {filteredLeads.map((l) => (
-                  <div key={l.id} className="p-4 border border-yellow-600 rounded-lg bg-gray-800">
-                    {editingLeadId === l.id ? (
-                      <div className="space-y-2">
-                        <input
-                          type="text"
-                          value={editLeadNome}
-                          onChange={(e) => setEditLeadNome(e.target.value)}
-                          className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                        />
-                        <input
-                          type="text"
-                          value={editLeadCognome}
-                          onChange={(e) => setEditLeadCognome(e.target.value)}
-                          className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                        />
-                        <input
-                          type="email"
-                          value={editLeadEmail}
-                          onChange={(e) => setEditLeadEmail(e.target.value)}
-                          className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                        />
-                        <input
-                          type="text"
-                          value={editLeadTelefono}
-                          onChange={(e) => setEditLeadTelefono(e.target.value)}
-                          className="w-full px-2 py-1 border border-yellow-600 bg-gray-700 text-white rounded-md"
-                        />
-                        <div className="flex space-x-2 justify-end">
-                          <button
-                            onClick={() => setEditingLeadId(null)}
-                            className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600"
-                          >
-                            Annulla
-                          </button>
-                          <button
-                            onClick={handleUpdateLead}
-                            className="bg-yellow-400 text-black px-2 py-1 rounded hover:bg-yellow-500"
-                          >
-                            Salva
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium text-white">{l.nome} {l.cognome}</h3>
-                          <p className="text-sm text-gray-300">Email: {l.email}</p>
-                          <p className="text-sm text-gray-300">Telefono: {l.telefono}</p>
-                          {l.sponsor && <p className="text-sm text-gray-300">Sponsor: {l.sponsor}</p>}
-                          <div className="flex items-center space-x-2 mt-2">
-                            <input
-                              type="checkbox"
-                              checked={l.contattato}
-                              onChange={() => handleToggleLeadContacted(l)}
-                            />
-                            <span className="text-sm text-gray-300">Contattato</span>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-300">
-                            {new Date(l.createdAt.toDate()).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
+          <h2 className="text-xl font-semibold mb-2">
+            <GradientText>Leads</GradientText>
+          </h2>
+          <div className="max-h-96 overflow-y-auto space-y-4">
+            {filteredLeads.map((lead) => (
+              <div
+                key={lead.id}
+                className="p-4 border border-yellow-600 rounded-lg bg-gray-800 transition-colors"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-medium text-white">
+                      {lead.nome} {lead.cognome}
+                    </h3>
+                    <p className="text-sm text-gray-300">
+                      Email: {lead.email}
+                    </p>
+                    <p className="text-sm text-gray-300">
+                      Telefono: {lead.telefono}
+                    </p>
+                    <p className="text-sm text-gray-300">
+                      Data: {new Date(lead.createdAt.toDate()).toLocaleDateString()}
+                    </p>
+                    <div className="flex items-center space-x-2 mt-2">
+                      <input
+                        type="checkbox"
+                        checked={lead.contattato || false}
+                        onChange={() => toggleLeadContattato(lead)}
+                        className="h-4 w-4 text-yellow-500 border-yellow-600"
+                      />
+                      <span className="text-sm text-gray-300">{lead.contattato ? 'Contattato' : 'Non contattato'}</span>
+                    </div>
+                    {lead.commenti && (
+                      <p className="text-sm text-gray-300 mt-2">
+                        Commenti: {lead.commenti}
+                      </p>
                     )}
-                    {editingLeadId !== l.id && (
-                      <div className="flex space-x-2 mt-2 justify-end">
-                        <button
-                          onClick={() => {
-                            setEditingLeadId(l.id);
-                            setEditLeadNome(l.nome);
-                            setEditLeadCognome(l.cognome);
-                            setEditLeadEmail(l.email);
-                            setEditLeadTelefono(l.telefono);
-                          }}
-                          className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500 flex items-center"
-                        >
-                          <Pencil className="w-4 h-4 mr-1"/> Modifica
-                        </button>
-                        <button
-                          onClick={() => handleDeleteLead(l.id)}
-                          className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700 flex items-center"
-                        >
-                          <Trash2 className="w-4 h-4 mr-1"/> Elimina
-                        </button>
-                      </div>
+                    {lead.sponsor && (
+                      <p className="text-sm text-gray-300 mt-2">
+                        Sponsor: {lead.sponsor}
+                      </p>
                     )}
                   </div>
-                ))}
-
-                {filteredLeads.length === 0 && (
-                  <p className="text-gray-300 text-center py-4">
-                    Nessun lead trovato
-                  </p>
-                )}
+                  <div className="text-right space-y-2">
+                    <button onClick={() => handleEditLead(lead)} className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500 flex items-center space-x-1">
+                      <Pencil className="w-4 h-4" />
+                      <span>Modifica</span>
+                    </button>
+                    <button onClick={() => handleDeleteLead(lead.id)} className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700 flex items-center space-x-1">
+                      <Trash2 className="w-4 h-4" />
+                      <span>Elimina</span>
+                    </button>
+                  </div>
+                </div>
               </div>
-            );
-          })()}
+            ))}
+
+            {filteredLeads.length === 0 && (
+              <p className="text-gray-300 text-center py-4">
+                Nessun lead trovato
+              </p>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Modal Modifica Utente */}
+      {showEditUserModal && editUserData && (
+        <EditUserModal
+          userData={editUserData}
+          onClose={() => {
+            setShowEditUserModal(false);
+            setEditUserData(null);
+          }}
+          onSave={handleUpdateUserData}
+          ruoliDisponibili={ruoliDisponibili}
+        />
+      )}
+
+      {/* Modal Modifica Lead */}
+      {showEditLeadModal && editLeadData && (
+        <EditLeadModal
+          leadData={editLeadData}
+          onClose={() => {
+            setShowEditLeadModal(false);
+            setEditLeadData(null);
+          }}
+          onSave={handleUpdateLead}
+          isSubmitting={isSubmittingLead}
+          errors={errorsLead}
+          register={registerLead}
+          handleSubmitLead={handleSubmitLead}
+        />
+      )}
     </section>
+  );
+}
+
+// Modal per modificare l'utente
+interface EditUserModalProps {
+  userData: User;
+  onClose: () => void;
+  onSave: (data: UserFormData) => void;
+  ruoliDisponibili: Ruolo[];
+}
+
+function EditUserModal({ userData, onClose, onSave, ruoliDisponibili }: EditUserModalProps) {
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<UserFormData>({
+    resolver: zodResolver(userSchema),
+    defaultValues: {
+      nome: userData.nome,
+      cognome: userData.cognome,
+      ruolo: userData.ruolo,
+      sponsor: userData.sponsor ?? '',
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-gray-900 p-6 rounded-lg w-full max-w-md">
+        <h3 className="text-xl font-semibold mb-4">Modifica Utente</h3>
+        <form onSubmit={handleSubmit(onSave)} className="space-y-4">
+          {/* Campo Nome */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Nome</label>
+            <input
+              type="text"
+              {...register('nome')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+            />
+            {errors.nome && <p className="text-red-500 text-sm mt-1">{errors.nome.message}</p>}
+          </div>
+
+          {/* Campo Cognome */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Cognome</label>
+            <input
+              type="text"
+              {...register('cognome')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+            />
+            {errors.cognome && <p className="text-red-500 text-sm mt-1">{errors.cognome.message}</p>}
+          </div>
+
+          {/* Campo Ruolo */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Ruolo</label>
+            <select
+              {...register('ruolo')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+            >
+              {ruoliDisponibili.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            {errors.ruolo && <p className="text-red-500 text-sm mt-1">{errors.ruolo.message}</p>}
+          </div>
+
+          {/* Campo Sponsor */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Sponsor (opzionale)</label>
+            <input
+              type="text"
+              {...register('sponsor')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+            />
+            {errors.sponsor && <p className="text-red-500 text-sm mt-1">{errors.sponsor.message}</p>}
+          </div>
+
+          {/* Pulsanti di Azione */}
+          <div className="flex justify-end space-x-2">
+            <button onClick={onClose} type="button" className="bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-600">
+              Annulla
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-yellow-400 text-black py-2 px-4 rounded-md hover:bg-yellow-500 transition-colors"
+            >
+              {isSubmitting ? 'Salvataggio...' : 'Salva'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Modal per modificare il lead
+interface EditLeadModalProps {
+  leadData: Lead;
+  onClose: () => void;
+  onSave: (data: LeadFormData) => void;
+  isSubmitting: boolean;
+  errors: any;
+  register: ReturnType<typeof useForm>["register"];
+  handleSubmitLead: ReturnType<typeof useForm>["handleSubmit"];
+}
+
+function EditLeadModal({ leadData, onClose, onSave, isSubmitting, errors, register, handleSubmitLead }: EditLeadModalProps) {
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-gray-900 p-6 rounded-lg w-full max-w-md">
+        <h3 className="text-xl font-semibold mb-4">Modifica Lead</h3>
+        <form onSubmit={handleSubmitLead(onSave)} className="space-y-4">
+          {/* Campo Nome */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Nome</label>
+            <input
+              type="text"
+              {...register('nome')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+            />
+            {errors.nome && <p className="text-red-500 text-sm mt-1">{errors.nome.message}</p>}
+          </div>
+
+          {/* Campo Cognome */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Cognome</label>
+            <input
+              type="text"
+              {...register('cognome')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+            />
+            {errors.cognome && <p className="text-red-500 text-sm mt-1">{errors.cognome.message}</p>}
+          </div>
+
+          {/* Campo Email */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Email</label>
+            <input
+              type="email"
+              {...register('email')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+            />
+            {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email.message}</p>}
+          </div>
+
+          {/* Campo Telefono */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Telefono</label>
+            <input
+              type="text"
+              {...register('telefono')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+            />
+            {errors.telefono && <p className="text-red-500 text-sm mt-1">{errors.telefono.message}</p>}
+          </div>
+
+          {/* Campo Contattato */}
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              {...register('contattato')}
+              className="h-4 w-4 text-yellow-500 border-yellow-600"
+            />
+            <span className="text-sm text-gray-300">Contattato</span>
+          </div>
+          {errors.contattato && <p className="text-red-500 text-sm mt-1">{errors.contattato.message}</p>}
+
+          {/* Campo Commenti */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Commenti (opzionale)</label>
+            <textarea
+              {...register('commenti')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+              placeholder="Aggiungi commenti..."
+              rows={3}
+            ></textarea>
+            {errors.commenti && <p className="text-red-500 text-sm mt-1">{errors.commenti.message}</p>}
+          </div>
+
+          {/* Campo Sponsor */}
+          <div>
+            <label className="block text-sm font-medium text-yellow-600 mb-1">Sponsor (opzionale)</label>
+            <input
+              type="text"
+              {...register('sponsor')}
+              className="w-full px-3 py-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+              placeholder="Sponsor se presente"
+            />
+            {errors.sponsor && <p className="text-red-500 text-sm mt-1">{errors.sponsor.message}</p>}
+          </div>
+
+          {/* Pulsanti di Azione */}
+          <div className="flex justify-end space-x-2">
+            <button onClick={onClose} type="button" className="bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-600">
+              Annulla
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-yellow-400 text-black py-2 px-4 rounded-md hover:bg-yellow-500 transition-colors"
+            >
+              {isSubmitting ? 'Salvataggio...' : 'Salva'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
