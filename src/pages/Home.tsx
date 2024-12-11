@@ -18,18 +18,34 @@ function isMobile() {
   return /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent);
 }
 
+// Controlla se l'app è già in modalità standalone (già installata)
+function isAppInstalled() {
+  // Su iOS Safari PWA
+  const iOSInstalled = (typeof window !== 'undefined' && 'standalone' in window.navigator && window.navigator.standalone);
+  // Su altri browser, come Chrome su Android
+  const otherInstalled = (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches);
+
+  return iOSInstalled || otherInstalled;
+}
+
 export function Home() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [showIOSInstallInstructions, setShowIOSInstallInstructions] = useState(false);
 
   useEffect(() => {
-    // Controlla se è iOS e mobile
+    // Se l'app è già installata in standalone, non mostrare nulla
+    if (isAppInstalled()) {
+      return;
+    }
+
+    // iOS: mostra le istruzioni dopo un delay se è mobile
     if (isIOS() && isMobile()) {
-      // Mostra le istruzioni per iOS dopo un breve delay per non infastidire subito
-      setTimeout(() => {
+      const iosTimer = setTimeout(() => {
         setShowIOSInstallInstructions(true);
       }, 2000);
+
+      return () => clearTimeout(iosTimer);
     }
 
     // Listener per l'evento beforeinstallprompt (Android/Chrome)
@@ -53,7 +69,6 @@ export function Home() {
   const handleInstallApp = async () => {
     if (!deferredPrompt) return;
 
-    // Mostra il prompt di installazione nativo
     deferredPrompt.prompt();
     const choiceResult = await deferredPrompt.userChoice;
     if (choiceResult.outcome === 'accepted') {
@@ -89,12 +104,18 @@ export function Home() {
         </div>
       )}
 
-      {/* Istruzioni iOS */}
+      {/* Istruzioni iOS (background nero) */}
       {showIOSInstallInstructions && (
         <div style={styles.overlay}>
           <div style={styles.instructionsBox}>
-            <h3>Aggiungi alla schermata Home</h3>
-            <p>Apri il menu Condividi (<strong>Share</strong>) nel tuo browser Safari e tocca "Aggiungi a Home" per installare l’app.</p>
+            <h3 style={{color: '#fff'}}>Aggiungi alla schermata Home</h3>
+            <p style={{color: '#fff'}}>
+              Per installare questa app sul tuo iPhone/iPad: 
+              <br />
+              1. Tocca il pulsante Condividi (in basso, l'icona con la freccia) nel browser Safari. 
+              <br />
+              2. Seleziona "Aggiungi a Home" per aggiungere l’app alla schermata principale del tuo dispositivo.
+            </p>
             <button style={styles.closeButton} onClick={closeIOSInstructions}>Chiudi</button>
           </div>
         </div>
@@ -135,14 +156,14 @@ const styles = {
     left: '0', 
     width: '100%', 
     height: '100%', 
-    background: 'rgba(0,0,0,0.5)', 
+    background: 'rgba(0,0,0,0.9)', // sfondo più scuro
     display: 'flex', 
     justifyContent: 'center', 
     alignItems: 'center',
     zIndex: 9999
   },
   instructionsBox: {
-    background: '#ffffff',
+    background: 'rgba(0,0,0,0.8)',
     padding: '20px',
     borderRadius: '8px',
     maxWidth: '80%',
