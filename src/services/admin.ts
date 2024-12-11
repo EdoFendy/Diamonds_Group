@@ -1,4 +1,3 @@
-// createNewUser.ts
 import { auth, db, firebaseConfig } from '../lib/firebase';
 import { initializeApp, FirebaseApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -8,7 +7,9 @@ import { User, Ruolo } from '../types';
 export async function createNewUser(userData: {
   nome: string;
   cognome: string;
-  sponsor?: string; // Sponsor è ora opzionale
+  // Rimuovi la linea sotto se "referral" non serve più
+  referral?: string;
+  sponsor: string; // Nuovo campo sponsor
   ruolo: Ruolo;
 }): Promise<User> {
   let secondaryApp: FirebaseApp | null = null;
@@ -55,7 +56,9 @@ export async function createNewUser(userData: {
       cognome: userData.cognome,
       email: tempEmail,
       codiceUnivoco,
-      sponsor: userData.sponsor ?? '', // Assegna sponsor se presente, altrimenti stringa vuota
+      // Se `referral` non serve più, rimuovi questa linea:
+      referral: userData.referral || '',
+      sponsor: userData.sponsor, // Assegna il campo sponsor
       ruolo: userData.ruolo,
       dataRegistrazione: new Date(),
     };
@@ -83,7 +86,7 @@ export async function createNewUser(userData: {
   }
 }
 
-// Funzioni di supporto
+// Helper functions
 function generateUniqueCode(): string {
   return Math.random().toString(36).substring(2, 10).toUpperCase();
 }

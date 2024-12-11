@@ -1,6 +1,6 @@
-import { Timestamp } from "firebase/firestore";
 import { ReactNode } from "react";
 
+// types.ts
 export type Ruolo = "Base" | "Avanzato" | "admin" | "utente";
 
 export interface User {
@@ -10,23 +10,11 @@ export interface User {
   cognome: string;
   email: string;
   codiceUnivoco: string;
+  referral: string;
   ruolo: Ruolo;
   dataRegistrazione: Date;
-  sponsor?: string; // Sponsor è ora opzionale
+  sponsor: string;
 }
-
-export interface Lead {
-  id: string;
-  nome: string;
-  cognome: string;
-  email: string;
-  telefono: string;
-  createdAt: Timestamp;
-  contattato?: boolean;
-  commenti?: string;
-  sponsor?: string; // Sponsor è opzionale
-}
-
 
 // types.ts
 export interface ZoomMeeting {
