@@ -8,17 +8,27 @@ import { Formazione } from './pages/Formazione';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminRoute } from './components/auth/AdminRoute';
 import { Toaster } from './components/ui/Toaster';
-import { Footer } from '../src/pages/footer'; // Assicurati che il percorso sia corretto
-import { Presentazioni } from '../src/pages/Presentazioni';
-import { Calendario } from '../src/pages/Calendario';
-import { PolicyPage } from '../src/pages/policy';
+import { Footer } from './pages/footer'; // Assicurati che il percorso sia corretto
+import { Presentazioni } from './pages/Presentazioni';
+import { Calendario } from './pages/Calendario';
+import { PolicyPage } from './pages/policy';
 
+// Funzione per controllare se l'app è aperta in modalità standalone (PWA installata)
+function isAppStandalone() {
+  if (typeof window === 'undefined') return false;
+  const isIOSStandalone = 'standalone' in window.navigator && window.navigator.standalone;
+  const isOtherStandalone = window.matchMedia('(display-mode: standalone)').matches;
+  return isIOSStandalone || isOtherStandalone;
+}
 
 function App() {
+  const inAppMode = isAppStandalone();
+
   return (
     <Router>
       <AuthProvider>
-        <div className="flex flex-col min-h-screen bg-black dark:bg-background transition-colors duration-300">
+        {/* Rimuoviamo la classe dark:bg-background per evitare sfondo bianco e manteniamo solo bg-black */}
+        <div className="flex flex-col min-h-screen bg-black transition-colors duration-300">
           <Navbar />
           <main className="flex-grow">
             <Routes>
@@ -46,7 +56,8 @@ function App() {
               />
             </Routes>
           </main>
-          <Footer />
+          {/* Mostra il footer solo se NON in modalità standalone (app installata) */}
+          {!inAppMode && <Footer />}
           <Toaster />
         </div>
       </AuthProvider>
