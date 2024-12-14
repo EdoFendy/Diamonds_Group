@@ -1,32 +1,42 @@
+"use client";
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { User, Ruolo } from '../types';
 
-export async function createNewUser(userData: {
+interface CreateNewUserData {
   nome: string;
   cognome: string;
   sponsor?: string;
   ruolo: Ruolo;
-}): Promise<User> {
+}
+
+export async function createNewUser(userData: CreateNewUserData): Promise<User> {
   try {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-      throw new Error('Utente non autenticato. Assicurati che l\'utente sia loggato correttamente.');
+      throw new Error('Utente non autenticato.');
     }
 
     const adminDocRef = doc(db, 'users', currentUser.uid);
     const adminDoc = await getDoc(adminDocRef);
 
-    if (!adminDoc.exists() || adminDoc.data()?.ruolo !== 'admin') {
-      throw new Error('Permesso negato. Solo gli amministratori possono creare nuovi utenti.');
+    if (!adminDoc.exists()) {
+      throw new Error('Utente corrente non trovato.');
+    }
+
+    const adminData = adminDoc.data();
+    const adminRole = adminData?.ruolo as Ruolo | undefined;
+
+    if (adminRole !== 'admin' && adminRole !== 'manager') {
+      throw new Error('Permesso negato.');
     }
 
     const codiceUnivoco = generateUniqueCode();
     const tempEmail = `${codiceUnivoco}@domain.com`;
     const tempPassword = generateRandomPassword();
     const referralId = generateReferralId();
-    const referralLink = `https://diamonds-group.com/?ref=${referralId}`;
+    const referralLink = `${process.env.NEXT_PUBLIC_SITE_URL}/signup?ref=${referralId}`;
 
     const userCredential = await createUserWithEmailAndPassword(
       auth,
@@ -62,12 +72,12 @@ export async function createNewUser(userData: {
 
     return newUser;
   } catch (error) {
-    console.error('Errore durante la creazione del nuovo utente:', error);
+    console.error('Errore creazione utente:', error);
     throw error;
   }
 }
 
-// Funzioni di supporto
+// Utility Functions
 function generateUniqueCode(): string {
   return Math.random().toString(36).substring(2, 10).toUpperCase();
 }

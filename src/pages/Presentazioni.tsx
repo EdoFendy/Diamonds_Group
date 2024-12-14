@@ -1,14 +1,35 @@
+// src/pages/Presentazioni.tsx
+
 import React from 'react';
-import { Play, Trash } from 'lucide-react';
+import { Play, Trash2, Pencil } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  addDoc,
+  deleteDoc,
+  doc,
+  updateDoc,
+  Timestamp,
+} from 'firebase/firestore';
 import { useAuthStore } from '../store/authStore';
 import ReactPlayer from 'react-player';
+import { canManageCourses } from '../services/permission'; // Import della funzione helper
 
 // Componente Riutilizzabile per il Testo con Gradiente Dorato
-function GradientText({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function GradientText({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <span className={`bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 bg-clip-text text-transparent ${className}`}>
+    <span
+      className={`bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 bg-clip-text text-transparent ${className}`}
+    >
       {children}
     </span>
   );
@@ -19,6 +40,7 @@ interface Presentazione {
   titolo: string;
   descrizione: string;
   videoUrl: string;
+  createdAt: Date;
 }
 
 export function Presentazioni() {
@@ -30,52 +52,86 @@ export function Presentazioni() {
   const [descrizioneNuovaPresentazione, setDescrizioneNuovaPresentazione] = React.useState<string>('');
   const [videoUrlNuovaPresentazione, setVideoUrlNuovaPresentazione] = React.useState<string>('');
 
+  // Stato per gestire la modalità modifica
+  const [editMode, setEditMode] = React.useState<boolean>(false);
+  const [currentPresentazioneId, setCurrentPresentazioneId] = React.useState<string | null>(null);
+
+  // Stato per gestire gli errori
+  const [error, setError] = React.useState<string>('');
+
   // Funzione per ottenere le presentazioni da Firestore
   React.useEffect(() => {
-    const q = query(collection(db, 'presentazioni'), orderBy('createdAt'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const presentazioniData: Presentazione[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Presentazione, 'id'>),
-      }));
-      setPresentazioni(presentazioniData);
-      if (presentazioniData.length > 0 && !videoUrl) {
-        setVideoUrl(presentazioniData[0].videoUrl);
-        setSezioneSelezionata(presentazioniData[0].id);
+    const q = query(collection(db, 'presentazioni'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const presentazioniData: Presentazione[] = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as Omit<Presentazione, 'id' | 'createdAt'>),
+          createdAt: (doc.data() as any).createdAt?.toDate() || new Date(),
+        }));
+        setPresentazioni(presentazioniData);
+        if (presentazioniData.length > 0 && !videoUrl) {
+          setVideoUrl(presentazioniData[0].videoUrl);
+          setSezioneSelezionata(presentazioniData[0].id);
+        }
+      },
+      (error) => {
+        console.error("Errore durante il recupero delle presentazioni:", error);
+        setError("Impossibile caricare le presentazioni. Riprova più tardi.");
       }
-    });
+    );
 
     return () => {
       unsubscribe();
     };
   }, [videoUrl]);
 
-  const handleSelectVideo = (url: string, sezioneId: string) => {
+  const handleSelectVideo = (url: string, presentazioneId: string) => {
     setVideoUrl(url);
-    setSezioneSelezionata(sezioneId);
+    setSezioneSelezionata(presentazioneId);
   };
 
   // Funzione per aggiungere una nuova presentazione
   const handleAddPresentazione = async () => {
+    if (!canManageCourses(user?.ruolo)) {
+      alert('Non hai i permessi per aggiungere una presentazione.');
+      return;
+    }
+
+    if (!titoloNuovaPresentazione || !descrizioneNuovaPresentazione || !videoUrlNuovaPresentazione) {
+      alert('Per favore, completa tutti i campi.');
+      return;
+    }
+
     try {
       const nuovaPresentazione = {
         titolo: titoloNuovaPresentazione,
         descrizione: descrizioneNuovaPresentazione,
         videoUrl: videoUrlNuovaPresentazione,
-        createdAt: new Date(),
+        createdAt: Timestamp.fromDate(new Date()),
       };
-      await addDoc(collection(db, 'presentazioni'), nuovaPresentazione);
+      const docRef = await addDoc(collection(db, 'presentazioni'), nuovaPresentazione);
       setTitoloNuovaPresentazione('');
       setDescrizioneNuovaPresentazione('');
       setVideoUrlNuovaPresentazione('');
-      console.log("Nuova presentazione aggiunta:", nuovaPresentazione);
+      console.log("Nuova presentazione aggiunta:", docRef.id);
     } catch (error) {
       console.error("Errore nell'aggiungere la presentazione:", error);
+      setError("Impossibile aggiungere la presentazione. Riprova più tardi.");
     }
   };
 
   // Funzione per rimuovere una presentazione
   const handleRemovePresentazione = async (presentazioneId: string) => {
+    if (!canManageCourses(user?.ruolo)) {
+      alert('Non hai i permessi per eliminare questa presentazione.');
+      return;
+    }
+
+    const conferma = window.confirm("Sei sicuro di voler eliminare questa presentazione?");
+    if (!conferma) return;
+
     try {
       await deleteDoc(doc(db, 'presentazioni', presentazioneId));
       console.log("Presentazione rimossa:", presentazioneId);
@@ -85,7 +141,58 @@ export function Presentazioni() {
       }
     } catch (error) {
       console.error("Errore nella rimozione della presentazione:", error);
+      setError("Impossibile eliminare la presentazione. Riprova più tardi.");
     }
+  };
+
+  // Funzione per aprire il modal in modalità modifica
+  const openEditModal = (presentazione: Presentazione) => {
+    setEditMode(true);
+    setCurrentPresentazioneId(presentazione.id);
+    setTitoloNuovaPresentazione(presentazione.titolo);
+    setDescrizioneNuovaPresentazione(presentazione.descrizione);
+    setVideoUrlNuovaPresentazione(presentazione.videoUrl);
+  };
+
+  // Funzione per aggiornare una presentazione esistente
+  const handleUpdatePresentazione = async () => {
+    if (!canManageCourses(user?.ruolo) || !currentPresentazioneId) {
+      alert('Non hai i permessi per modificare questa presentazione.');
+      return;
+    }
+
+    if (!titoloNuovaPresentazione || !descrizioneNuovaPresentazione || !videoUrlNuovaPresentazione) {
+      alert('Per favore, completa tutti i campi.');
+      return;
+    }
+
+    try {
+      const presentazioneRef = doc(db, 'presentazioni', currentPresentazioneId);
+      const updatedPresentazione = {
+        titolo: titoloNuovaPresentazione,
+        descrizione: descrizioneNuovaPresentazione,
+        videoUrl: videoUrlNuovaPresentazione,
+      };
+      await updateDoc(presentazioneRef, updatedPresentazione);
+      setEditMode(false);
+      setCurrentPresentazioneId(null);
+      setTitoloNuovaPresentazione('');
+      setDescrizioneNuovaPresentazione('');
+      setVideoUrlNuovaPresentazione('');
+      console.log("Presentazione aggiornata:", currentPresentazioneId);
+    } catch (error) {
+      console.error("Errore nell'aggiornare la presentazione:", error);
+      setError("Impossibile aggiornare la presentazione. Riprova più tardi.");
+    }
+  };
+
+  // Funzione per chiudere il modal e resettare lo stato
+  const handleCloseModal = () => {
+    setEditMode(false);
+    setCurrentPresentazioneId(null);
+    setTitoloNuovaPresentazione('');
+    setDescrizioneNuovaPresentazione('');
+    setVideoUrlNuovaPresentazione('');
   };
 
   return (
@@ -109,16 +216,25 @@ export function Presentazioni() {
           </p>
         </div>
 
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-600 text-white rounded-md">
+            {error}
+          </div>
+        )}
+
         <div className="grid md:grid-cols-12 gap-8">
           {/* Lista Presentazioni */}
           <div className="md:col-span-8 md:col-start-3">
             <div className="bg-black/50 p-6 rounded-lg border border-yellow-600/20 shadow-sm backdrop-blur-sm">
+              {/* Video Player */}
               {videoUrl && (
                 <div className="mb-8">
                   <ReactPlayer url={videoUrl} controls width="100%" />
                 </div>
               )}
 
+              {/* Lista delle Presentazioni */}
               <div className="space-y-4">
                 {presentazioni.map((presentazione) => (
                   <div key={presentazione.id} className="flex items-center space-x-4">
@@ -140,13 +256,24 @@ export function Presentazioni() {
                         </p>
                       </div>
                     </button>
-                    {user?.ruolo === 'admin' && (
-                      <button
-                        onClick={() => handleRemovePresentazione(presentazione.id)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash className="w-6 h-6" />
-                      </button>
+                    {/* Bottoni di Modifica ed Eliminazione */}
+                    {canManageCourses(user?.ruolo) && (
+                      <div className="flex flex-col space-y-2">
+                        <button
+                          onClick={() => openEditModal(presentazione)}
+                          className="flex items-center space-x-1 bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500"
+                        >
+                          <Pencil className="w-4 h-4" />
+                          <span>Modifica</span>
+                        </button>
+                        <button
+                          onClick={() => handleRemovePresentazione(presentazione.id)}
+                          className="flex items-center space-x-1 bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span>Elimina</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -155,10 +282,11 @@ export function Presentazioni() {
           </div>
         </div>
 
-        {user?.ruolo === 'admin' && (
+        {/* Se l'utente può gestire presentazioni, mostra il form per aggiungere una nuova presentazione */}
+        {canManageCourses(user?.ruolo) && (
           <div className="mt-8 max-w-3xl mx-auto bg-black/50 p-6 rounded-lg border border-yellow-600/20 shadow-sm backdrop-blur-sm">
             <h3 className="text-lg font-semibold mb-2">
-              <GradientText>Aggiungi una nuova Presentazione</GradientText>
+              <GradientText>{editMode ? 'Modifica Presentazione' : 'Aggiungi una nuova Presentazione'}</GradientText>
             </h3>
             <input
               type="text"
@@ -178,17 +306,92 @@ export function Presentazioni() {
               value={videoUrlNuovaPresentazione}
               onChange={(e) => setVideoUrlNuovaPresentazione(e.target.value)}
               placeholder="URL del video"
-              className="w-full mb-2 p-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+              className="w-full mb-4 p-2 border border-yellow-600 bg-gray-700 text-white rounded-md focus:ring-yellow-500 focus:border-yellow-500"
             />
-            <button
-              onClick={handleAddPresentazione}
-              className="w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors"
-            >
-              Aggiungi Presentazione
-            </button>
+            <div className="flex justify-end space-x-2">
+              {editMode ? (
+                <>
+                  <button
+                    onClick={handleCloseModal}
+                    className="bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    onClick={handleUpdatePresentazione}
+                    className="bg-yellow-400 text-black py-2 px-4 rounded-md hover:bg-yellow-500 transition-colors"
+                  >
+                    Salva Modifiche
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleAddPresentazione}
+                  className="w-full bg-yellow-400 text-black py-2 rounded-md hover:bg-yellow-500 transition-colors"
+                >
+                  Aggiungi Presentazione
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
     </section>
   );
+}
+
+// Funzioni di utilità
+function getStartOfWeek(date: Date): Date {
+  const day = date.getDay(); // 0 (domenica) - 6 (sabato)
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Inizio settimana da lunedì
+  const startOfWeek = new Date(date);
+  startOfWeek.setDate(diff);
+  startOfWeek.setHours(0, 0, 0, 0);
+  return startOfWeek;
+}
+
+function addDays(date: Date, days: number): Date {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('it-IT', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function getDayName(date: Date): string {
+  return date.toLocaleDateString('it-IT', { weekday: 'long' });
+}
+
+function isSameDay(date1: Date, date2: Date): boolean {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+}
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('it-IT', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function setTimeToDate(date: Date, time: string): Date {
+  const [hours, minutes] = time.split(':').map(Number);
+  const newDate = new Date(date);
+  newDate.setHours(hours, minutes, 0, 0);
+  return newDate;
+}
+
+function formatInputTime(date: Date): string {
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
 }

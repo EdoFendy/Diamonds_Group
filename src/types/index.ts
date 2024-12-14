@@ -1,59 +1,76 @@
 import { Timestamp } from "firebase/firestore";
-import { ReactNode } from "react";
-
-export type Ruolo = "Base" | "Avanzato" | "admin" | "utente";
+export type Ruolo = "Base" | "Avanzato" | "manager" | "admin" | "utente";
 
 export interface User {
-  uid: string;
   id: string;
+  uid: string;
   nome: string;
   cognome: string;
   email: string;
-  codiceUnivoco: string;
   ruolo: Ruolo;
+  sponsor?: string;
+  codiceUnivoco: string;
+  referralId: string;
+  referralLink: string;
   dataRegistrazione: Date;
-  sponsor?: string; // Sponsor è ora opzionale
 }
+
 
 export interface Lead {
-  id: string;
+  readonly id: string;
+
   nome: string;
+
   cognome: string;
+
   email: string;
+
   telefono: string;
+
   createdAt: Timestamp;
+
   contattato?: boolean;
+
   commenti?: string;
-  sponsor?: string; // Sponsor è opzionale
+
+  sponsor?: string;
 }
 
 
-// types.ts
 export interface ZoomMeeting {
-  id: string;
+  readonly id: string;
+
   titolo: string;
+
   descrizione: string;
+
   link: string;
-  data: Date; // Include sia la data che l'ora del meeting
+
+  data: Date;
 }
 
-
-
-// types.ts
 export interface Corso {
-  id: string;
-  titolo: string;
-  descrizione: string;
-  sezioni: Sezione[];
-  createdAt: Date;
-  ruoliPermessi: Ruolo[]; // Aggiunto
-}
+  readonly id: string;
 
+  titolo: string;
+
+  descrizione: string;
+
+  sezioni: Sezione[];
+
+  createdAt: Date;
+
+  ruoliPermessi: Ruolo[];
+}
 
 export interface Sezione {
-  id: string;
+  readonly id: string;
+
   titolo: string;
+
   videoUrl: string;
+
   descrizione: string;
+
   ordine: number;
 }

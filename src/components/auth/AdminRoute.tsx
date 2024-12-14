@@ -6,15 +6,19 @@ interface AdminRouteProps {
 }
 
 export function AdminRoute({ children }: AdminRouteProps) {
-  const { user, isLoading } = useAuthStore();
+  const { user } = useAuthStore();
 
-  if (isLoading) {
-    return <div>Caricamento...</div>;
+  if (!user) {
+    // Se l'utente non è loggato, reindirizza alla pagina di login
+    return <Navigate to="/login" replace />;
   }
 
-  if (!user || user.ruolo !== 'admin') {
-    return <Navigate to="/" />;
+  if (user.ruolo !== 'admin' && user.ruolo !== 'manager') {
+    // Se l'utente non è admin o manager, reindirizza a una pagina di accesso negato o home
+    return <Navigate to="/home" replace />;
   }
 
   return <>{children}</>;
 }
+
+

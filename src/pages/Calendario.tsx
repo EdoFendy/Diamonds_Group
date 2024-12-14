@@ -1,3 +1,5 @@
+// src/pages/Calendario.tsx
+
 import React from 'react';
 import { useAuthStore } from '../store/authStore';
 import { db } from '../lib/firebase';
@@ -14,8 +16,9 @@ import {
   updateDoc,
   deleteDoc,
 } from 'firebase/firestore';
-import { ZoomMeeting } from '../types';
-import { ChevronLeft, ChevronRight, PlusCircle } from 'lucide-react';
+import { ZoomMeeting, Ruolo } from '../types';
+import { ChevronLeft, ChevronRight, PlusCircle, Pencil, Trash2 } from 'lucide-react';
+import { canManageCourses } from '../services/permission'; // Import della funzione helper
 
 // Componente per il Testo con Gradiente Dorato
 function GradientText({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -91,7 +94,7 @@ export function Calendario() {
 
   // Aggiungere un nuovo meeting Zoom
   const handleAddMeeting = async () => {
-    if (!user || user.ruolo !== 'admin') {
+    if (!canManageCourses(user?.ruolo)) {
       alert('Non hai i permessi per aggiungere un meeting.');
       return;
     }
@@ -113,7 +116,7 @@ export function Calendario() {
 
   // Aggiornare un meeting esistente
   const handleUpdateMeeting = async () => {
-    if (!user || user.ruolo !== 'admin' || !currentMeetingId) {
+    if (!canManageCourses(user?.ruolo) || !currentMeetingId) {
       alert('Non hai i permessi per modificare questo meeting.');
       return;
     }
@@ -136,7 +139,7 @@ export function Calendario() {
 
   // Eliminare un meeting
   const handleDeleteMeeting = async (meetingId: string) => {
-    if (!user || user.ruolo !== 'admin') {
+    if (!canManageCourses(user?.ruolo)) {
       alert('Non hai i permessi per eliminare questo meeting.');
       return;
     }
@@ -238,19 +241,21 @@ export function Calendario() {
                         <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:underline">
                           Link al meeting Zoom
                         </a>
-                        {user && user.ruolo === 'admin' && (
+                        {canManageCourses(user?.ruolo) && (
                           <div className="flex space-x-2 mt-2">
                             <button
                               onClick={() => openEditModal(m)}
-                              className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500"
+                              className="bg-yellow-400 text-black py-1 px-2 rounded hover:bg-yellow-500 flex items-center space-x-1"
                             >
-                              Modifica
+                              <Pencil className="w-4 h-4" />
+                              <span>Modifica</span>
                             </button>
                             <button
                               onClick={() => handleDeleteMeeting(m.id)}
-                              className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700"
+                              className="bg-red-600 text-white py-1 px-2 rounded hover:bg-red-700 flex items-center space-x-1"
                             >
-                              Elimina
+                              <Trash2 className="w-4 h-4" />
+                              <span>Elimina</span>
                             </button>
                           </div>
                         )}
@@ -260,7 +265,7 @@ export function Calendario() {
                       <p className="text-sm text-gray-500">Nessun meeting programmato.</p>
                     )}
                   </div>
-                  {user && user.ruolo === 'admin' && (
+                  {canManageCourses(user?.ruolo) && (
                     <button
                       onClick={() => {
                         resetModalState();

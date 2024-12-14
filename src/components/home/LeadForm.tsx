@@ -7,9 +7,10 @@ import { Input } from '../../../components/ui/input';
 import { Button } from '../../../components/ui/button';
 import { Label } from '../../../components/ui/label';
 import { toast } from 'sonner';
-import { getFirestore, collection, addDoc, Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, Timestamp, doc, getDoc, setDoc, query, where, getDocs } from 'firebase/firestore';
 import { app } from '../../lib/firebase';
 import { GradientText } from '../layout/GradientText';
+import { User } from '../../types/index'; // Importa l'interfaccia User
 
 const db = getFirestore(app);
 
@@ -58,8 +59,11 @@ export function LeadForm() {
   });
 
   const [counter, setCounter] = useState(0);
+  const [referralId, setReferralId] = useState<string | null>(null);
+  const [sponsorName, setSponsorName] = useState<string>('');
 
   useEffect(() => {
+    // Incrementa il contatore dei visitatori
     const incrementCounter = async () => {
       const counterDocRef = doc(db, 'siteData', 'visitorCounter');
       const counterDoc = await getDoc(counterDocRef);
@@ -75,18 +79,47 @@ export function LeadForm() {
     };
 
     incrementCounter();
+
+    // Cattura il referral ID dalla URL
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      setReferralId(ref);
+      fetchSponsorName(ref);
+    }
   }, []);
+
+  // Funzione per recuperare il nome dello sponsor basato sul referralId
+  const fetchSponsorName = async (refId: string) => {
+    try {
+      const usersCollection = collection(db, 'users');
+      const q = query(usersCollection, where('referralId', '==', refId));
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        const sponsorData = querySnapshot.docs[0].data() as User;
+        setSponsorName(`${sponsorData.nome} ${sponsorData.cognome}`);
+      } else {
+        console.warn('Nessuno sponsor trovato per il referralId:', refId);
+      }
+    } catch (error) {
+      console.error('Errore nel recuperare lo sponsor:', error);
+    }
+  };
 
   const onSubmit = async (data: LeadFormData) => {
     try {
-      await addDoc(collection(db, 'leads'), {
+      // Aggiungi il nome dello sponsor se presente
+      const leadData = {
         nome: data.nome,
         cognome: data.cognome,
         email: data.email,
         telefono: data.telefono,
-        sponsor: data.sponsor,
+        sponsor: sponsorName || data.sponsor, // Priorità allo sponsor tramite referral link
         createdAt: Timestamp.now(),
-      });
+      };
+
+      await addDoc(collection(db, 'leads'), leadData);
 
       toast.success('Richiesta inviata con successo!');
       reset();
@@ -150,14 +183,26 @@ export function LeadForm() {
               />
             </FormField>
 
-            <FormField label="Sponsor" error={errors.sponsor?.message}>
-              <Input
-                type="text"
-                {...register('sponsor')}
-                className="bg-neutral-800 border-yellow-600/50 text-white placeholder-gray-400 w-full"
-                placeholder="Chi ti ha condiviso il sito"
-              />
-            </FormField>
+            {sponsorName ? (
+              <div className="space-y-2">
+                <Label className="text-white">Sponsor</Label>
+                <Input
+                  type="text"
+                  value={sponsorName}
+                  readOnly
+                  className="bg-neutral-800 border-yellow-600/50 text-white placeholder-gray-400 w-full"
+                />
+              </div>
+            ) : (
+              <FormField label="Sponsor" error={errors.sponsor?.message}>
+                <Input
+                  type="text"
+                  {...register('sponsor')}
+                  className="bg-neutral-800 border-yellow-600/50 text-white placeholder-gray-400 w-full"
+                  placeholder="Chi ti ha condiviso il sito"
+                />
+              </FormField>
+            )}
 
             {/* Campo Accettazione Policy */}
             <div className="space-y-2">

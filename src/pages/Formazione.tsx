@@ -1,3 +1,5 @@
+// src/pages/Formazione.tsx
+
 import React from 'react';
 import { useAuthStore } from '../store/authStore';
 import { Play, Book, ChevronRight } from 'lucide-react';
@@ -12,6 +14,7 @@ import {
   orderBy,
 } from 'firebase/firestore';
 import ReactPlayer from 'react-player';
+import { canManageCourses } from '../services/permission'; // Import della funzione helper
 
 // Componente Riutilizzabile per il Testo con Gradiente Dorato
 function GradientText({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -78,7 +81,7 @@ export function Formazione() {
   }, []);
 
   const handleSelectCorso = (corso: Corso) => {
-    if (!corso.ruoliPermessi.includes(user?.ruolo || '')) {
+    if (!canManageCourses(user?.ruolo)) {
       alert('Non hai i permessi per accedere a questo corso.');
       return;
     }
@@ -125,6 +128,11 @@ export function Formazione() {
 
   // Funzione per aggiungere un nuovo corso
   const handleAddCorso = async () => {
+    if (!canManageCourses(user?.ruolo)) {
+      alert('Non hai i permessi per aggiungere un nuovo corso.');
+      return;
+    }
+
     try {
       const nuovoCorso = {
         titolo: titoloNuovoCorso,
@@ -141,11 +149,17 @@ export function Formazione() {
       console.log("Nuovo corso aggiunto:", nuovoCorso);
     } catch (error) {
       console.error("Errore nell'aggiungere il corso:", error);
+      alert("Errore nell'aggiungere il corso. Controlla la console per maggiori dettagli.");
     }
   };
 
   // Funzione per aggiungere una nuova sezione al corso selezionato
   const handleAddSezione = async () => {
+    if (!canManageCourses(user?.ruolo)) {
+      alert('Non hai i permessi per aggiungere una nuova sezione.');
+      return;
+    }
+
     if (!corsoSelezionato) return;
     try {
       const nuovaSezione = {
@@ -162,6 +176,7 @@ export function Formazione() {
       console.log("Nuova sezione aggiunta:", nuovaSezione);
     } catch (error) {
       console.error("Errore nell'aggiungere la sezione:", error);
+      alert("Errore nell'aggiungere la sezione. Controlla la console per maggiori dettagli.");
     }
   };
 
@@ -223,7 +238,8 @@ export function Formazione() {
                   ))}
               </div>
 
-              {user?.ruolo === 'admin' && (
+              {/* Se l'utente può gestire corsi, mostra il form per aggiungere un nuovo corso */}
+              {canManageCourses(user?.ruolo) && (
                 <div className="mt-6">
                   <h3 className="text-lg font-semibold mb-2">
                     <GradientText>Aggiungi un nuovo Corso</GradientText>
@@ -243,7 +259,7 @@ export function Formazione() {
                   />
                   <div className="mb-4">
                     <h4 className="text-md font-semibold mb-2">Seleziona i ruoli permessi:</h4>
-                    {['Base', 'Avanzato', 'admin', 'utente'].map((ruolo) => (
+                    {['Base', 'Avanzato', 'admin', 'manager', 'utente'].map((ruolo) => (
                       <label key={ruolo} className="inline-flex items-center mr-4">
                         <input
                           type="checkbox"
@@ -314,7 +330,8 @@ export function Formazione() {
                   ))}
                 </div>
 
-                {user?.ruolo === 'admin' && (
+                {/* Se l'utente può gestire corsi, mostra il form per aggiungere una nuova sezione */}
+                {canManageCourses(user?.ruolo) && (
                   <div className="mt-6">
                     <h3 className="text-lg font-semibold mb-2">
                       <GradientText>Aggiungi una nuova Sezione</GradientText>
