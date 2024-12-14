@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { auth } from '../../lib/firebase';
 import logo from './logo.png';
-import { Home, Calendar, Presentation, User, LogIn, LogOut, ChevronDown, MapPin } from 'lucide-react'; 
+import { Home, Calendar, Presentation, User, LogIn, LogOut, ChevronDown, MapPin } from 'lucide-react';
 
 function isAppStandalone() {
   if (typeof window === 'undefined') return false;
@@ -28,14 +28,13 @@ export const Navbar = () => {
   const iconClass = "mb-1";
 
   return (
-    <nav 
-      className="bg-black w-full overflow-x-hidden  relative px-20" 
+    <nav
+      className="bg-black w-full overflow-x-hidden relative px-20"
       style={{
         paddingTop: inAppMode ? 'env(safe-area-inset-top)' : undefined,
       }}
     >
       <div className="flex flex-col md:flex-row md:justify-between md:items-center w-full px-4">
-        
         {/* Logo: centrato con scritta sotto, su desktop a sinistra */}
         <div className="py-4 flex justify-center md:justify-start">
           <Link to="/">
@@ -47,7 +46,6 @@ export const Navbar = () => {
 
         {/* Nav Links: una riga di icone sopra testo, su desktop a destra */}
         <div className="flex items-center justify-center md:justify-end space-x-4 pb-2 md:pb-0 w-full md:w-auto">
-
           <Link to="/" className={linkClass}>
             <Home className={`h-5 w-5 md:h-6 md:w-6 ${iconClass}`} />
             <span>Home</span>
@@ -77,7 +75,7 @@ export const Navbar = () => {
               >
                 <User className={`h-5 w-5 md:h-6 md:w-6 ${iconClass}`} />
                 <div className="flex items-center space-x-1">
-                  <span>{user.ruolo === 'admin' ? 'Admin' : 'Utente'}</span>
+                  <span>{user.nome}</span>
                   <ChevronDown className="h-4 w-4 md:h-5 md:w-5" />
                 </div>
               </button>
@@ -88,7 +86,6 @@ export const Navbar = () => {
               <span>Accedi</span>
             </Link>
           )}
-
         </div>
       </div>
 
@@ -96,7 +93,7 @@ export const Navbar = () => {
       {dropdownOpen && (
         <>
           {/* Overlay full-screen sopra tutto */}
-          <div 
+          <div
             className="fixed inset-0 z-[9998] bg-black bg-opacity-50"
             onClick={() => setDropdownOpen(false)}
           ></div>
@@ -112,6 +109,13 @@ export const Navbar = () => {
                 Admin
               </Link>
             )}
+            <Link
+              to="/profilo"
+              onClick={() => setDropdownOpen(false)}
+              className="block px-4 py-2 text-white hover:bg-gray-800 text-sm"
+            >
+              Profilo
+            </Link>
             <Link
               to="/formazione"
               onClick={() => setDropdownOpen(false)}
@@ -129,7 +133,6 @@ export const Navbar = () => {
           </div>
         </>
       )}
-
     </nav>
   );
 };

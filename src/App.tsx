@@ -13,6 +13,7 @@ import { Presentazioni } from './pages/Presentazioni';
 import { Calendario } from './pages/Calendario';
 import { PolicyPage } from './pages/policy';
 import { Contatti } from './pages/Contatti';
+import { Profilo } from './pages/profilo';
 
 // Funzione per controllare se l'app è aperta in modalità standalone (PWA installata)
 function isAppStandalone() {
@@ -39,6 +40,7 @@ function App() {
               <Route path="/calendario" element={<Calendario />} />
               <Route path="/policy" element={<PolicyPage />} />
               <Route path="/contatti" element={<Contatti />} />
+              <Route path="/profilo" element={<Profilo />} />
               
               <Route
                 path="/admin"
